@@ -1,5 +1,6 @@
 from optparse import OptionParser as op
 from utils.base import Agent
+from multiprocessing import Process, Queue
 
 if __name__ == "__main__":
     parser = op(description='Reflex Worker Agent')
@@ -13,7 +14,7 @@ if __name__ == "__main__":
     agent = Agent()
 
     if options.pair:
-        if not agent.pair():
+        if not agent.pair(options):
             exit(1)
     else:
         agent.heartbeat()

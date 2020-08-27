@@ -104,13 +104,19 @@ class Agent(object):
         if not options.roles:
             errors.append('Missing argument --roles')
 
+        roles = options.roles.split(',')
+        token = options.token
+        console = options.console
+
+        for role in roles:
+            if role not in ('poller','runner'):
+                errors.append(f'Invalid role "{role}"')
+
         if len(errors) > 0:
             logging.info('\n'.join(errors))
             exit(1)
 
-        roles = options.roles.split(',')
-        token = options.token
-        console = options.console
+        
 
         agent_data = {
             "name": self.hostname,
