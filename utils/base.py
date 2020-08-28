@@ -104,6 +104,16 @@ class Agent(object):
             return response
 
 
+    def download_plugins(self):
+
+        plugins = ['sentinelone', 'utilities']
+        for plugin in plugins:
+            response = self.call_mgmt_api('plugin/download/%s.py' % plugin)
+            if response.status_code == 200:
+                with open(os.path.join('./plugins','%s.py' % plugin), 'w', newline='') as f:
+                    f.write(response.text)
+
+
     def heartbeat(self):
         '''
         Pings the API to update the last_heartbeat timestamp of 

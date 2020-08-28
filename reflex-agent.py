@@ -20,8 +20,11 @@ if __name__ == "__main__":
         if not agent.pair(options):
             exit(1)
     else:
+        
+    
+        agent.download_plugins()
+
         plugins = Plugin('sentinelone')
         plugins.actions['hello'](plugins.actions['uppercase']('HELLO WORLD!'))
-        
         #agent.heartbeat()
         #print(agent.get_agent_config().json())
