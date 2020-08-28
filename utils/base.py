@@ -1,9 +1,32 @@
 import os
 import socket
 import logging
+from functools import partial
 from requests import Session, Request
+from pluginbase import PluginBase
 
 logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
+
+here = os.path.abspath(os.path.dirname(__file__))
+get_path = partial(os.path.join, here)
+plugin_base = PluginBase(package='plugins', searchpath=[get_path('../plugins')])
+
+class Plugin(object):
+
+    def __init__(self, name):
+        self.name = name
+        self.actions = {}
+
+        self.source = plugin_base.make_plugin_source(
+            searchpath=[get_path('./plugins')],
+            identifier=self.name)
+
+        for plugin_name in self.source.list_plugins():
+            plugin = self.source.load_plugin(plugin_name)
+            plugin.setup(self)
+
+    def register_action(self, name, action):
+        self.actions[name] = action
 
 class Agent(object):
 

@@ -1,6 +1,9 @@
+import os
+from functools import partial
 from optparse import OptionParser as op
-from utils.base import Agent
+from utils.base import Agent, Plugin
 from multiprocessing import Process, Queue
+
 
 if __name__ == "__main__":
     parser = op(description='Reflex Worker Agent')
@@ -17,5 +20,8 @@ if __name__ == "__main__":
         if not agent.pair(options):
             exit(1)
     else:
-        agent.heartbeat()
-        print(agent.get_agent_config().json())
+        plugins = Plugin('sentinelone')
+        plugins.actions['hello'](plugins.actions['uppercase']('HELLO WORLD!'))
+        
+        #agent.heartbeat()
+        #print(agent.get_agent_config().json())
