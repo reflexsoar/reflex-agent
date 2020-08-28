@@ -20,8 +20,6 @@ if __name__ == "__main__":
         if not agent.pair(options):
             exit(1)
     else:
-        
-    
         agent.download_plugins()
 
         plugins = Plugin('sentinelone')
