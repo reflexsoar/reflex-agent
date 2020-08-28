@@ -1,0 +1,55 @@
+{
+    "name": "Super awesome playbook",
+    "description": "Does super awesome things",
+    "steps": [
+        {
+            "order": 1,
+            "name": "Foreach observable",
+            "type": "foreach",
+            "input": "observables",
+            "action": null,
+            "steps": [
+                {
+                    "order": 1,
+                    "name": "Check if item is a host",
+                    "type": "if",
+                    "source": "dataType",
+                    "condition": "eq",
+                    "target_value": "host",
+                    "if_true": [{
+                        "order": 1,
+                        "name": "Tag missing",
+                        "type": "set",
+                        "action": "set_value",
+                        "input": "value",
+                        "value": "FOO"
+                    }],
+                    "if_false": [{
+                        "order": 1,
+                        "name": "Tag missing",
+                        "type": "set",
+                        "action": "set_value",
+                        "input": "value",
+                        "value": "BAR"
+                    }],
+                    "credential_id": "xxxxx-xxxxx-xxxxx-xxxxx-xxxxx"
+                }
+            ]
+        },
+        {
+            "order": 2,
+            "name":"Set Alert Severity",
+            "type": "set",
+            "input": "severity",
+            "action": "set_value",
+            "value": "4"
+        },
+        {
+            "order": 3,
+            "name": "Alert to MS Teams",
+            "type": "output",
+            "action": "alert_teams",
+            "credential_id": "xxxxx-xxxxx-xxxxx-xxxxx-xxxxx"
+        }
+    ]
+}

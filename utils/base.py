@@ -1,6 +1,7 @@
 import os
 import socket
 import logging
+import hashlib
 from functools import partial
 from requests import Session, Request
 from pluginbase import PluginBase
@@ -31,6 +32,8 @@ class Plugin(object):
 class Agent(object):
 
     def __init__(self):
+        ''' A new agent object '''
+        
         self.uuid = os.getenv('AGENT_UUID')
         self.access_token = os.getenv('ACCESS_TOKEN')
         self.console_url = os.getenv('CONSOLE_URL')
@@ -40,6 +43,10 @@ class Agent(object):
 
 
     def agent_ip(self):
+        '''
+        Fetches the IP address of the machine
+        '''
+
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         try:
             # doesn't even have to be reachable
@@ -53,6 +60,9 @@ class Agent(object):
 
 
     def call_mgmt_api(self, endpoint, data=None, method='GET', token=None):
+        '''
+        Makes calls to the management console
+        '''
 
         # Create a requests session
         s = Session()
@@ -105,13 +115,27 @@ class Agent(object):
 
 
     def download_plugins(self):
+        '''
+        Downloads plugins from the API so they can be 
+        loaded and run actions via playbook steps
+        '''
 
-        plugins = ['sentinelone', 'utilities']
+        hasher = hashlib.sha1()
+
+        response = self.call_mgmt_api('plugin')
+        if response.status_code == 200:
+            plugins = response.json()
+        
         for plugin in plugins:
-            response = self.call_mgmt_api('plugin/download/%s.py' % plugin)
+            response = self.call_mgmt_api('plugin/download/%s' % plugin['filename'])
             if response.status_code == 200:
-                with open(os.path.join('./plugins','%s.py' % plugin), 'w', newline='') as f:
-                    f.write(response.text)
+
+                # Save the file to disk
+                with open(os.path.join('./plugins','%s' % plugin['filename']), 'w', newline='') as f:
+                    hasher.update(response.text.encode())
+                    if plugin['file_hash'] == hasher.hexdigest():
+                        f.write(response.text)
+                        f.close()                    
 
 
     def heartbeat(self):
