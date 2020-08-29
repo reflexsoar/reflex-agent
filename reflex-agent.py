@@ -1,9 +1,15 @@
 import os
+import ssl
+import urllib3
+import logging
 from functools import partial
 from optparse import OptionParser as op
 from utils.base import Agent, Plugin
 from multiprocessing import Process, Queue
+from elasticsearch import Elasticsearch
 
+logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 if __name__ == "__main__":
     parser = op(description='Reflex Worker Agent')
@@ -17,12 +23,98 @@ if __name__ == "__main__":
     agent = Agent()
 
     if options.pair:
+        logging.info('Pairing agent..')
         if not agent.pair(options):
             exit(1)
     else:
         agent.download_plugins()
+        agent.get_config()
 
+        logging.info('Running test plugin!')
         plugins = Plugin('sentinelone')
         plugins.actions['hello'](plugins.actions['uppercase']('HELLO WORLD!'))
-        #agent.heartbeat()
-        #print(agent.get_agent_config().json())
+
+        agent.heartbeat()
+        while True:
+            logging.info('Running agent')
+
+            for i in agent.config['inputs']:
+
+                headers = {
+                    'Authorization': 'Bearer {}'.format(os.getenv('ACCESS_TOKEN')),
+                    'Content-Type': 'application/json'
+                }
+
+                logging.info('Running input %s' % (i['name']))
+
+                # Fetch the credentials for the input
+                if 'credential' in i:
+                
+                    # Fetch the credential details
+                    logging.info("Fetching credentials for %s" % (i['name']))
+                    response = agent.call_mgmt_api('credential/%s' % i['credential']['uuid'])
+                    #response = requests.get('%s/credential/%s' % (API_URL, i['credential']['uuid']), headers=headers)
+                    if response.status_code == 200:
+                        cred_details = response.json()
+
+                    # Decrypt the secret
+                    response = agent.call_mgmt_api('credential/decrypt/%s' % i['credential']['uuid'])
+                    #response = requests.get('%s/credential/decrypt/%s' % (API_URL, i['credential']['uuid']), headers=headers)        
+                    if response.status_code == 200:
+                        cred_data = response.json()
+                        secret = response.json()['secret']
+
+                if i['plugin'] == "Elasticsearch":
+                    context = ssl.create_default_context()
+
+                    config = i['config']
+                    if config['cafile'] != "":
+                        # NEED TO FIGURE OUT WHERE TO STORE THE CAFILE, maybe as DER format in the input?
+                        pass
+                    else:
+                        context = ssl.create_default_context()
+
+                    CONTEXT_VERIFY_MODES = {
+                        "none": ssl.CERT_NONE,
+                        "optional": ssl.CERT_OPTIONAL,
+                        "required": ssl.CERT_REQUIRED
+                    }
+                
+                    context.check_hostname = config['check_hostname']
+                    context.verify_mode = CONTEXT_VERIFY_MODES[config['cert_verification']]
+
+                    es_config = {
+                        "scheme": config['scheme'],
+                        "ssl_context": context
+                    }
+                    
+                    logging.info('RUNNING ELASTICSEARCH PLUGIN')
+                    if config['auth_method'] == 'http_auth':
+                        es_config['http_auth'] = (cred_details['username'], secret)
+                    else:
+                        es_config['api_key'] = (cred_details['username'], secret)
+
+                    es = Elasticsearch(config['hosts'], **es_config)
+                    body = {'query': {'range': {"@timestamp": {"gt": "now-{}".format("12d")}}}, 'size':200}
+                    response = es.search(index=config['index'], body=body)
+                    if response['hits']['total']['value'] > 0:
+                        alerts = []
+                        for record in response['hits']['hits']:
+                            source = record['_source']
+                            alert = {
+                                'title': source['signal']['rule']['name'],
+                                'description': source['signal']['rule']['description'],
+                                'reference': source['signal']['parent']['id'],
+                                'raw_log': source
+                            }
+                            alerts.append(alert)
+                    headers = {
+                        'content-type': 'application/json'
+                    }
+
+                    logging.info('Pushing %s alerts to bulk ingest...' % len(alerts))
+                    response = agent.call_mgmt_api('alert/bulk', data={'alerts': alerts})                    
+                    #response = requests.post('%s/alert/_bulk' % (API_URL), headers=headers, json={'alerts': alerts})
+                    if response.status_code == 200:
+                        logging.info(response.content)
+            time.sleep(5)

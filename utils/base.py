@@ -3,6 +3,7 @@ import socket
 import logging
 import hashlib
 from functools import partial
+import requests
 from requests import Session, Request
 from pluginbase import PluginBase
 
@@ -77,7 +78,7 @@ class Agent(object):
         # Set the HTTP headers
         headers = {
             'Authorization': 'Bearer %s' % (ACCESS_TOKEN),
-            'Content-Type': 'application-json'
+            'Content-Type': 'application/json'
         }
 
         # Dynamically create the request
@@ -88,6 +89,8 @@ class Agent(object):
 
         if data:
             request_data['json'] = data
+
+        print(request_data)
 
         req = Request(method, **request_data)
         prepared_req = req.prepare()
@@ -103,7 +106,7 @@ class Agent(object):
             return None
 
 
-    def get_agent_config(self):
+    def get_config(self):
         '''
         Fetches the entire agent config including
         inputs and playbooks to run, credentials, etc.
@@ -111,7 +114,8 @@ class Agent(object):
 
         response = self.call_mgmt_api('/agent/{}'.format(self.uuid))
         if response.status_code == 200:
-            return response
+            self.config = response.json()
+            return
 
 
     def download_plugins(self):
@@ -173,15 +177,18 @@ class Agent(object):
             logging.info('\n'.join(errors))
             exit(1)
 
-        
-
         agent_data = {
             "name": self.hostname,
             "ip_address": self.ip,
             "roles": roles
         }
 
-        response = self.call_mgmt_api('/agent', data=agent_data, method='POST', token=token)
+        headers = {
+            'Authorization': 'Bearer %s' % token,
+            'Content-Type': 'application/json'
+        }
+
+        response = requests.post('%s/agent' % options.console, json=agent_data, headers=headers)
         if response.status_code == 200:
             data = response.json()
             env_file = """CONSOLE_URL='{}'
@@ -196,3 +203,5 @@ AGENT_UUID='{}'""".format(console, data['token'], data['uuid'])
         else:
             logging.info('Failed to pair agent.')
             return False
+        logging.info('Pairing complete, restart agent to start work.')
+        return True
