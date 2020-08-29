@@ -113,7 +113,7 @@ if __name__ == "__main__":
                     }
 
                     logging.info('Pushing %s alerts to bulk ingest...' % len(alerts))
-                    response = agent.call_mgmt_api('alert/bulk', data={'alerts': alerts})                    
+                    response = agent.call_mgmt_api('alert/_bulk', data={'alerts': alerts}, method='POST')                    
                     #response = requests.post('%s/alert/_bulk' % (API_URL), headers=headers, json={'alerts': alerts})
                     if response.status_code == 200:
                         logging.info(response.content)

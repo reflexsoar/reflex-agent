@@ -2,6 +2,7 @@ import os
 import socket
 import logging
 import hashlib
+import time
 from functools import partial
 import requests
 from requests import Session, Request
@@ -90,8 +91,6 @@ class Agent(object):
         if data:
             request_data['json'] = data
 
-        print(request_data)
-
         req = Request(method, **request_data)
         prepared_req = req.prepare()
 
@@ -112,7 +111,7 @@ class Agent(object):
         inputs and playbooks to run, credentials, etc.
         '''
 
-        response = self.call_mgmt_api('/agent/{}'.format(self.uuid))
+        response = self.call_mgmt_api('agent/{}'.format(self.uuid))
         if response.status_code == 200:
             self.config = response.json()
             return
@@ -148,7 +147,7 @@ class Agent(object):
         the agent
         '''
 
-        response = self.call_mgmt_api('/agent/heartbeat/{}'.format(self.uuid))
+        response = self.call_mgmt_api('agent/heartbeat/{}'.format(self.uuid))
         if response.status_code == 200:
             return response
 
