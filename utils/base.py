@@ -3,6 +3,7 @@ import socket
 import logging
 import hashlib
 import time
+import json
 from functools import partial
 import requests
 from requests import Session, Request
@@ -172,6 +173,7 @@ class Agent(object):
             if role not in ('poller','runner'):
                 errors.append(f'Invalid role "{role}"')
 
+
         if len(errors) > 0:
             logging.info('\n'.join(errors))
             exit(1)
@@ -181,6 +183,9 @@ class Agent(object):
             "ip_address": self.ip,
             "roles": roles
         }
+
+        if options.groups:
+            agent_data['groups'] = options.groups.split(',')
 
         headers = {
             'Authorization': 'Bearer %s' % token,
@@ -200,7 +205,8 @@ AGENT_UUID='{}'""".format(console, data['token'], data['uuid'])
             logging.info('Agent already paired with console.')
             return False
         else:
-            logging.info('Failed to pair agent.')
+            error = json.loads(response.content)['message']
+            logging.info('Failed to pair agent. %s' % error)
             return False
         logging.info('Pairing complete, restart agent to start work.')
         return True
