@@ -2,6 +2,7 @@ import os
 import ssl
 import urllib3
 import logging
+import time
 from functools import partial
 from optparse import OptionParser as op
 from utils.base import Agent, Plugin
@@ -54,13 +55,11 @@ if __name__ == "__main__":
                     # Fetch the credential details
                     logging.info("Fetching credentials for %s" % (i['name']))
                     response = agent.call_mgmt_api('credential/%s' % i['credential']['uuid'])
-                    #response = requests.get('%s/credential/%s' % (API_URL, i['credential']['uuid']), headers=headers)
                     if response.status_code == 200:
                         cred_details = response.json()
 
                     # Decrypt the secret
                     response = agent.call_mgmt_api('credential/decrypt/%s' % i['credential']['uuid'])
-                    #response = requests.get('%s/credential/decrypt/%s' % (API_URL, i['credential']['uuid']), headers=headers)        
                     if response.status_code == 200:
                         cred_data = response.json()
                         secret = response.json()['secret']
@@ -70,7 +69,7 @@ if __name__ == "__main__":
 
                     config = i['config']
                     if config['cafile'] != "":
-                        # NEED TO FIGURE OUT WHERE TO STORE THE CAFILE, maybe as DER format in the input?
+                        # TODO: NEED TO FIGURE OUT WHERE TO STORE THE CAFILE, maybe as DER format in the input? - BC
                         pass
                     else:
                         context = ssl.create_default_context()
@@ -115,7 +114,6 @@ if __name__ == "__main__":
 
                     logging.info('Pushing %s alerts to bulk ingest...' % len(alerts))
                     response = agent.call_mgmt_api('alert/_bulk', data={'alerts': alerts}, method='POST')                    
-                    #response = requests.post('%s/alert/_bulk' % (API_URL), headers=headers, json={'alerts': alerts})
                     if response.status_code == 200:
                         logging.info(response.content)
             time.sleep(5)

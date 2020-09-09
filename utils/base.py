@@ -4,8 +4,10 @@ import logging
 import hashlib
 import time
 import json
+import io
 from functools import partial
 import requests
+from zipfile import ZipFile
 from requests import Session, Request
 from pluginbase import PluginBase
 
@@ -134,12 +136,15 @@ class Agent(object):
             response = self.call_mgmt_api('plugin/download/%s' % plugin['filename'])
             if response.status_code == 200:
 
-                # Save the file to disk
-                with open(os.path.join('./plugins','%s' % plugin['filename']), 'w', newline='') as f:
-                    hasher.update(response.text.encode())
-                    if plugin['file_hash'] == hasher.hexdigest():
-                        f.write(response.text)
-                        f.close()                    
+                # Compute the hash of the file that was just downloaded
+                hasher.update(response.content)
+                if plugin['file_hash'] == hasher.hexdigest():
+                    with ZipFile(io.BytesIO(response.content)) as z:
+                        logging.info("Extracting ZIP file")
+                        for item in z.infolist():
+                            if item.filename.endswith(".py"):
+                                item.filename = os.path.basename(item.filename)
+                                z.extract(item, './plugins')
 
 
     def heartbeat(self):
@@ -154,7 +159,13 @@ class Agent(object):
 
 
     def pair(self, options):
+        '''
+        Pairs an agent with the console, this only needs to be run
+        once per agent
+        '''
 
+        # Check that the bare minimum parameters are available
+        # add an error if they are missing
         errors = []
         if not options.token:
             errors.append('Missing argument --token')
@@ -169,11 +180,14 @@ class Agent(object):
         token = options.token
         console = options.console
 
+        # Determine if the roles supplied in the CLI pair command
+        # are valid roles supported by the tool
         for role in roles:
             if role not in ('poller','runner'):
                 errors.append(f'Invalid role "{role}"')
 
-
+        # If there are any errors, return them to STDOUT
+        # and exit the agent
         if len(errors) > 0:
             logging.info('\n'.join(errors))
             exit(1)
@@ -184,6 +198,8 @@ class Agent(object):
             "roles": roles
         }
 
+        # Check if any agent groups are defined and 
+        # split them out into an array if they are
         if options.groups:
             agent_data['groups'] = options.groups.split(',')
 
