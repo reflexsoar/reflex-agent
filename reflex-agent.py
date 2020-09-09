@@ -33,8 +33,8 @@ if __name__ == "__main__":
         agent.get_config()
 
         logging.info('Running test plugin!')
-        plugins = Plugin('sentinelone')
-        plugins.actions['hello'](plugins.actions['uppercase']('HELLO WORLD!'))
+        plugins = Plugin('utilities')
+        plugins.actions['uppercase']('clay sux')
 
         agent.heartbeat()
         while True:
@@ -95,7 +95,7 @@ if __name__ == "__main__":
                         es_config['api_key'] = (cred_details['username'], secret)
 
                     es = Elasticsearch(config['hosts'], **es_config)
-                    body = {'query': {'range': {"@timestamp": {"gt": "now-{}".format("12d")}}}, 'size':200}
+                    body = {'query': {'range': {"@timestamp": {"gt": "now-{}".format("30d")}}}, 'size':200}
                     response = es.search(index=config['index'], body=body)
                     if response['hits']['total']['value'] > 0:
                         alerts = []
@@ -114,6 +114,6 @@ if __name__ == "__main__":
 
                     logging.info('Pushing %s alerts to bulk ingest...' % len(alerts))
                     response = agent.call_mgmt_api('alert/_bulk', data={'alerts': alerts}, method='POST')                    
-                    if response.status_code == 200:
-                        logging.info(response.content)
+                    #if response.status_code == 207:
+                    #    logging.info(response.content)
             time.sleep(5)

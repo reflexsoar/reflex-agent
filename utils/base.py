@@ -126,18 +126,18 @@ class Agent(object):
         loaded and run actions via playbook steps
         '''
 
-        hasher = hashlib.sha1()
-
         response = self.call_mgmt_api('plugin')
         if response.status_code == 200:
             plugins = response.json()
         
         for plugin in plugins:
+            hasher = hashlib.sha1()
             response = self.call_mgmt_api('plugin/download/%s' % plugin['filename'])
             if response.status_code == 200:
 
                 # Compute the hash of the file that was just downloaded
                 hasher.update(response.content)
+                print(plugin['file_hash'], hasher.hexdigest())
                 if plugin['file_hash'] == hasher.hexdigest():
                     with ZipFile(io.BytesIO(response.content)) as z:
                         logging.info("Extracting ZIP file")
