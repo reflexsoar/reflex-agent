@@ -30,14 +30,17 @@ if __name__ == "__main__":
             exit(1)
     else:
         agent.download_plugins()
-        agent.get_config()
-
+        
         logging.info('Running test plugin!')
         plugins = Plugin('utilities')
         plugins.actions['uppercase']('clay sux')
 
-        agent.heartbeat()
+        
         while True:
+
+            agent.get_config()
+            agent.heartbeat()
+
             logging.info('Running agent')
 
             for i in agent.config['inputs']:
@@ -101,19 +104,23 @@ if __name__ == "__main__":
                         alerts = []
                         for record in response['hits']['hits']:
                             source = record['_source']
+                            observables = agent.extract_observables(source, i['field_mapping'])
                             alert = {
                                 'title': source['signal']['rule']['name'],
                                 'description': source['signal']['rule']['description'],
                                 'reference': source['signal']['parent']['id'],
+                                'tags': ['foo','bar'],
                                 'raw_log': source
                             }
+                            if observables:
+                                alert['observables'] = observables
                             alerts.append(alert)
                     headers = {
                         'content-type': 'application/json'
                     }
 
                     logging.info('Pushing %s alerts to bulk ingest...' % len(alerts))
-                    response = agent.call_mgmt_api('alert/_bulk', data={'alerts': alerts}, method='POST')                    
+                    response = agent.call_mgmt_api('alert/_bulk', data={'alerts': alerts}, method='POST')
                     #if response.status_code == 207:
                     #    logging.info(response.content)
-            time.sleep(5)
+            time.sleep(30)

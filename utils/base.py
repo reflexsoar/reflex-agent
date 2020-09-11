@@ -15,7 +15,9 @@ logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
 
 here = os.path.abspath(os.path.dirname(__file__))
 get_path = partial(os.path.join, here)
-plugin_base = PluginBase(package='plugins', searchpath=[get_path('../plugins')])
+plugin_base = PluginBase(package='plugins', searchpath=[
+                         get_path('../plugins')])
+
 
 class Plugin(object):
 
@@ -34,18 +36,18 @@ class Plugin(object):
     def register_action(self, name, action):
         self.actions[name] = action
 
+
 class Agent(object):
 
     def __init__(self):
         ''' A new agent object '''
-        
+
         self.uuid = os.getenv('AGENT_UUID')
         self.access_token = os.getenv('ACCESS_TOKEN')
         self.console_url = os.getenv('CONSOLE_URL')
         self.ip = self.agent_ip()
         self.hostname = socket.gethostname()
         self.config = {}
-
 
     def agent_ip(self):
         '''
@@ -63,7 +65,6 @@ class Agent(object):
             s.close()
         return IP
 
-
     def call_mgmt_api(self, endpoint, data=None, method='GET', token=None):
         '''
         Makes calls to the management console
@@ -75,6 +76,7 @@ class Agent(object):
         # Get some configuration values to make them easier
         # to access
         CONSOLE_URL = os.getenv('CONSOLE_URL')
+        CONSOLE_URL = CONSOLE_URL + "/api/v1.0"
         ACCESS_TOKEN = os.getenv('ACCESS_TOKEN')
         if token:
             ACCESS_TOKEN = token
@@ -107,7 +109,6 @@ class Agent(object):
         else:
             return None
 
-
     def get_config(self):
         '''
         Fetches the entire agent config including
@@ -119,7 +120,6 @@ class Agent(object):
             self.config = response.json()
             return
 
-
     def download_plugins(self):
         '''
         Downloads plugins from the API so they can be 
@@ -129,23 +129,27 @@ class Agent(object):
         response = self.call_mgmt_api('plugin')
         if response.status_code == 200:
             plugins = response.json()
-        
+
         for plugin in plugins:
             hasher = hashlib.sha1()
-            response = self.call_mgmt_api('plugin/download/%s' % plugin['filename'])
+            response = self.call_mgmt_api(
+                'plugin/download/%s' % plugin['filename'])
             if response.status_code == 200:
 
                 # Compute the hash of the file that was just downloaded
                 hasher.update(response.content)
-                print(plugin['file_hash'], hasher.hexdigest())
-                if plugin['file_hash'] == hasher.hexdigest():
+                checksum = hasher.hexdigest()
+                print(plugin['file_hash'], checksum)
+                if plugin['file_hash'] == checksum:
                     with ZipFile(io.BytesIO(response.content)) as z:
                         logging.info("Extracting ZIP file")
                         for item in z.infolist():
                             if item.filename.endswith(".py"):
                                 item.filename = os.path.basename(item.filename)
                                 z.extract(item, './plugins')
-
+                else:
+                    logging.error("Plugin %s failed signature checking and will not be downloaded.  Expected %s, got %s" % (
+                        plugin['name'], plugin['file_hash'], checksum))
 
     def heartbeat(self):
         '''
@@ -157,6 +161,35 @@ class Agent(object):
         if response.status_code == 200:
             return response
 
+    def get_nested(self, message, *args):
+        ''' Iterates over nested fields to get the final desired value '''
+        if args and message:
+            element = args[0]
+            if element:
+                value = message.get(element)
+                return value if len(args) == 1 else self.get_nested(value, *args[1:])
+
+    def extract_observables(self, source, field_mapping):
+        ''' 
+        extracts observables from fields mappings
+        and returns an array of artifacts to add
+        to the alarm 
+        '''
+        
+        observables = []
+        for field in field_mapping:
+            tags = []
+            if 'tags' in field:
+                tags += field['tags']
+
+            value = self.get_nested(source, *field['field'].split('.'))
+            if value:
+                if isinstance(value, list):
+                    value = ' '.join(value)
+                observables += [{"value":value, "dataType":field['dataType'], "tlp":field['tlp'], "tags":tags,}]
+            else:
+                pass
+        return observables
 
     def pair(self, options):
         '''
@@ -169,10 +202,10 @@ class Agent(object):
         errors = []
         if not options.token:
             errors.append('Missing argument --token')
-        
+
         if not options.console:
             errors.append('Missing argument --console')
-        
+
         if not options.roles:
             errors.append('Missing argument --roles')
 
@@ -183,7 +216,7 @@ class Agent(object):
         # Determine if the roles supplied in the CLI pair command
         # are valid roles supported by the tool
         for role in roles:
-            if role not in ('poller','runner'):
+            if role not in ('poller', 'runner'):
                 errors.append(f'Invalid role "{role}"')
 
         # If there are any errors, return them to STDOUT
@@ -198,7 +231,7 @@ class Agent(object):
             "roles": roles
         }
 
-        # Check if any agent groups are defined and 
+        # Check if any agent groups are defined and
         # split them out into an array if they are
         if options.groups:
             agent_data['groups'] = options.groups.split(',')
@@ -208,7 +241,8 @@ class Agent(object):
             'Content-Type': 'application/json'
         }
 
-        response = requests.post('%s/agent' % options.console, json=agent_data, headers=headers)
+        response = requests.post(
+            '%s/api/v1.0/agent' % options.console, json=agent_data, headers=headers)
         if response.status_code == 200:
             data = response.json()
             env_file = """CONSOLE_URL='{}'
