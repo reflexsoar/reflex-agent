@@ -101,11 +101,11 @@ if __name__ == "__main__":
                     body = {'query': {'range': {"@timestamp": {"gt": "now-{}".format("30d")}}}, 'size':200}
                     response = es.search(index=config['index'], body=body)
                     if response['hits']['total']['value'] > 0:
-                        alerts = []
+                        events = []
                         for record in response['hits']['hits']:
                             source = record['_source']
                             observables = agent.extract_observables(source, i['field_mapping'])
-                            alert = {
+                            event = {
                                 'title': source['signal']['rule']['name'],
                                 'description': source['signal']['rule']['description'],
                                 'reference': source['signal']['parent']['id'],
@@ -113,14 +113,14 @@ if __name__ == "__main__":
                                 'raw_log': source
                             }
                             if observables:
-                                alert['observables'] = observables
-                            alerts.append(alert)
+                                event['observables'] = observables
+                            events.append(event)
                     headers = {
                         'content-type': 'application/json'
                     }
 
-                    logging.info('Pushing %s alerts to bulk ingest...' % len(alerts))
-                    response = agent.call_mgmt_api('alert/_bulk', data={'alerts': alerts}, method='POST')
+                    logging.info('Pushing %s events to bulk ingest...' % len(events))
+                    response = agent.call_mgmt_api('event/_bulk', data={'events': events}, method='POST')
                     #if response.status_code == 207:
                     #    logging.info(response.content)
             time.sleep(30)
