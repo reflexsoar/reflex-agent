@@ -139,7 +139,6 @@ class Agent(object):
                 # Compute the hash of the file that was just downloaded
                 hasher.update(response.content)
                 checksum = hasher.hexdigest()
-                print(plugin['file_hash'], checksum)
                 if plugin['file_hash'] == checksum:
                     with ZipFile(io.BytesIO(response.content)) as z:
                         logging.info("Extracting ZIP file")

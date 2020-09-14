@@ -1,5 +1,6 @@
 import os
 import ssl
+import json
 import urllib3
 import logging
 import time
@@ -110,7 +111,7 @@ if __name__ == "__main__":
                                 'description': source['signal']['rule']['description'],
                                 'reference': source['signal']['parent']['id'],
                                 'tags': ['foo','bar'],
-                                'raw_log': source
+                                'raw_log': json.dumps(source)
                             }
                             if observables:
                                 event['observables'] = observables
