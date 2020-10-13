@@ -24,7 +24,7 @@ if __name__ == "__main__":
     parser.add_option('--ignore-tls', dest='ignore_tls', action='store_true')
     (options,args) = parser.parse_args()
 
-    agent = Agent()
+    agent = Agent(options=options)
 
     if options.pair:
         logging.info('Pairing agent..')
@@ -57,12 +57,12 @@ if __name__ == "__main__":
                 
                     # Fetch the credential details
                     logging.info("Fetching credentials for %s" % (i['name']))
-                    response = agent.call_mgmt_api('credential/%s' % i['credential']['uuid'], options=options)
+                    response = agent.call_mgmt_api('credential/%s' % i['credential']['uuid'])
                     if response.status_code == 200:
                         cred_details = response.json()
 
                     # Decrypt the secret
-                    response = agent.call_mgmt_api('credential/decrypt/%s' % i['credential']['uuid'], options=options)
+                    response = agent.call_mgmt_api('credential/decrypt/%s' % i['credential']['uuid'])
                     if response.status_code == 200:
                         cred_data = response.json()
                         secret = response.json()['secret']
@@ -129,7 +129,7 @@ if __name__ == "__main__":
 
                     if len(events) > 0:
                         logging.info('Pushing %s events to bulk ingest...' % len(events))
-                        response = agent.call_mgmt_api('event/_bulk', data={'events': events}, method='POST', options=options)
+                        response = agent.call_mgmt_api('event/_bulk', data={'events': events}, method='POST')
                         if response.status_code == 207:
                             logging.info(response.content)
             time.sleep(30)

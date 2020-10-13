@@ -39,7 +39,7 @@ class Plugin(object):
 
 class Agent(object):
 
-    def __init__(self):
+    def __init__(self, options):
         ''' A new agent object '''
 
         self.uuid = os.getenv('AGENT_UUID')
@@ -48,6 +48,7 @@ class Agent(object):
         self.ip = self.agent_ip()
         self.hostname = socket.gethostname()
         self.config = {}
+        self.options = options
 
     def agent_ip(self):
         '''
@@ -65,14 +66,14 @@ class Agent(object):
             s.close()
         return IP
 
-    def call_mgmt_api(self, endpoint, data=None, method='GET', token=None, options=None):
+    def call_mgmt_api(self, endpoint, data=None, method='GET', token=None):
         '''
         Makes calls to the management console
         '''
 
         # Create a requests session
         s = Session()
-        if options and options.ignore_tls:
+        if self.options and self.options.ignore_tls:
             s.verify = False
 
         # Get some configuration values to make them easier
@@ -98,8 +99,6 @@ class Agent(object):
         if data:
             request_data['json'] = data
 
-        print(request_data)
-
         req = Request(method, **request_data)
         prepared_req = req.prepare()
 
@@ -107,7 +106,6 @@ class Agent(object):
         # TODO: ADD PROXY SUPPORT
         # TODO: ADD CUSTOM CA SUPPORT
         resp = s.send(prepared_req)
-        print(resp.content)
 
         return resp
 
@@ -192,7 +190,7 @@ class Agent(object):
                 pass
         return observables
 
-    def pair(self, options):
+    def pair(self):
         '''
         Pairs an agent with the console, this only needs to be run
         once per agent
@@ -201,18 +199,18 @@ class Agent(object):
         # Check that the bare minimum parameters are available
         # add an error if they are missing
         errors = []
-        if not options.token:
+        if not self.options.token:
             errors.append('Missing argument --token')
 
-        if not options.console:
+        if not self.options.console:
             errors.append('Missing argument --console')
 
-        if not options.roles:
+        if not self.options.roles:
             errors.append('Missing argument --roles')
 
-        roles = options.roles.split(',')
-        token = options.token
-        console = options.console
+        roles = self.options.roles.split(',')
+        token = self.options.token
+        console = self.options.console
 
         # Determine if the roles supplied in the CLI pair command
         # are valid roles supported by the tool
@@ -234,8 +232,8 @@ class Agent(object):
 
         # Check if any agent groups are defined and
         # split them out into an array if they are
-        if options.groups:
-            agent_data['groups'] = options.groups.split(',')
+        if self.options.groups:
+            agent_data['groups'] = self.options.groups.split(',')
 
         headers = {
             'Authorization': 'Bearer %s' % token,
@@ -243,10 +241,10 @@ class Agent(object):
         }
 
         # If the user has opted to ignore certificate names
-        verify = options.ignore_tls or False
+        verify = self.options.ignore_tls or False
 
         response = requests.post(
-            '%s/api/v1.0/agent' % options.console, json=agent_data, headers=headers, verify=verify)
+            '%s/api/v1.0/agent' % self.options.console, json=agent_data, headers=headers, verify=verify)
         if response.status_code == 200:
             data = response.json()
             env_file = """CONSOLE_URL='{}'
@@ -259,7 +257,6 @@ AGENT_UUID='{}'""".format(console, data['token'], data['uuid'])
             logging.info('Agent already paired with console.')
             return False
         else:
-            print(response.content)
             error = json.loads(response.content)['message']
             logging.info('Failed to pair agent. %s' % error)
             return False
