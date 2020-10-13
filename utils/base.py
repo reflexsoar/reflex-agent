@@ -65,13 +65,15 @@ class Agent(object):
             s.close()
         return IP
 
-    def call_mgmt_api(self, endpoint, data=None, method='GET', token=None):
+    def call_mgmt_api(self, endpoint, data=None, method='GET', token=None, options=None):
         '''
         Makes calls to the management console
         '''
 
         # Create a requests session
         s = Session()
+        if options and options.ignore_tls:
+            s.verify = False
 
         # Get some configuration values to make them easier
         # to access
@@ -96,6 +98,8 @@ class Agent(object):
         if data:
             request_data['json'] = data
 
+        print(request_data)
+
         req = Request(method, **request_data)
         prepared_req = req.prepare()
 
@@ -103,11 +107,9 @@ class Agent(object):
         # TODO: ADD PROXY SUPPORT
         # TODO: ADD CUSTOM CA SUPPORT
         resp = s.send(prepared_req)
+        print(resp.content)
 
-        if resp.status_code == 200:
-            return resp
-        else:
-            return None
+        return resp
 
     def get_config(self):
         '''
@@ -240,8 +242,11 @@ class Agent(object):
             'Content-Type': 'application/json'
         }
 
+        # If the user has opted to ignore certificate names
+        verify = options.ignore_tls or False
+
         response = requests.post(
-            '%s/api/v1.0/agent' % options.console, json=agent_data, headers=headers)
+            '%s/api/v1.0/agent' % options.console, json=agent_data, headers=headers, verify=verify)
         if response.status_code == 200:
             data = response.json()
             env_file = """CONSOLE_URL='{}'
@@ -254,6 +259,7 @@ AGENT_UUID='{}'""".format(console, data['token'], data['uuid'])
             logging.info('Agent already paired with console.')
             return False
         else:
+            print(response.content)
             error = json.loads(response.content)['message']
             logging.info('Failed to pair agent. %s' % error)
             return False

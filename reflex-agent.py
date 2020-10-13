@@ -21,6 +21,7 @@ if __name__ == "__main__":
     parser.add_option('--roles', dest='roles', type=str, action="store", help='The roles that this worker will perform')
     parser.add_option('--proxy', dest='proxy', type=str, action="store", help='If the agent is running behind a proxy you may need to set this')
     parser.add_option('--groups', dest='groups', type=str, action="store", help="The groups this agent should be a part of")
+    parser.add_option('--ignore-tls', dest='ignore_tls', action='store_true')
     (options,args) = parser.parse_args()
 
     agent = Agent()
@@ -34,8 +35,6 @@ if __name__ == "__main__":
         
         logging.info('Running test plugin!')
         plugins = Plugin('utilities')
-        plugins.actions['uppercase']('clay sux')
-
         
         while True:
 
@@ -58,12 +57,12 @@ if __name__ == "__main__":
                 
                     # Fetch the credential details
                     logging.info("Fetching credentials for %s" % (i['name']))
-                    response = agent.call_mgmt_api('credential/%s' % i['credential']['uuid'])
+                    response = agent.call_mgmt_api('credential/%s' % i['credential']['uuid'], options=options)
                     if response.status_code == 200:
                         cred_details = response.json()
 
                     # Decrypt the secret
-                    response = agent.call_mgmt_api('credential/decrypt/%s' % i['credential']['uuid'])
+                    response = agent.call_mgmt_api('credential/decrypt/%s' % i['credential']['uuid'], options=options)
                     if response.status_code == 200:
                         cred_data = response.json()
                         secret = response.json()['secret']
@@ -99,10 +98,18 @@ if __name__ == "__main__":
                         es_config['api_key'] = (cred_details['username'], secret)
 
                     es = Elasticsearch(config['hosts'], **es_config)
-                    body = {'query': {'range': {"@timestamp": {"gt": "now-{}".format("30d")}}}, 'size':200}
-                    response = es.search(index=config['index'], body=body)
-                    if response['hits']['total']['value'] > 0:
-                        events = []
+                    body = {'query': {'range': {"@timestamp": {"gt": "now-{}".format("60d")}}}, 'size':200}
+                    events = []
+
+                    # Try to query elasticsearch, if it doens't work
+                    # skip processing until the next run
+                    response = None
+                    try:
+                        response = es.search(index=config['index'], body=body)
+                    except Exception as e:
+                        logging.error('Failed to query input %s' % i['name'])
+
+                    if response and response['hits']['total']['value'] > 0:                        
                         for record in response['hits']['hits']:
                             source = record['_source']
                             observables = agent.extract_observables(source, i['field_mapping'])
@@ -120,8 +127,9 @@ if __name__ == "__main__":
                         'content-type': 'application/json'
                     }
 
-                    logging.info('Pushing %s events to bulk ingest...' % len(events))
-                    response = agent.call_mgmt_api('event/_bulk', data={'events': events}, method='POST')
-                    #if response.status_code == 207:
-                    #    logging.info(response.content)
+                    if len(events) > 0:
+                        logging.info('Pushing %s events to bulk ingest...' % len(events))
+                        response = agent.call_mgmt_api('event/_bulk', data={'events': events}, method='POST', options=options)
+                        if response.status_code == 207:
+                            logging.info(response.content)
             time.sleep(30)
