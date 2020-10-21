@@ -19,6 +19,30 @@ plugin_base = PluginBase(package='plugins', searchpath=[
                          get_path('../plugins')])
 
 
+def event_severity(sev):
+    '''
+    Returns a dictionary object containing the
+    severity of an event
+    '''
+    severities = [
+        {'low': 0},
+        {'medium': 1},
+        {'high': 2},
+        {'critical': 3}
+    ]
+    return severities[sev]
+
+EVENT_BODY = {
+    'title': '',
+    'description': '',
+    'reference': '',
+    'tags': [],
+    'tlp': 0,
+    'severity': 0,
+    'observables': [],
+    'raw_log': ''
+}
+
 class Plugin(object):
 
     def __init__(self, name):
@@ -109,6 +133,32 @@ class Agent(object):
 
         return resp
 
+
+    def fetch_credentials(self, uuid):
+        '''
+        Fetches credentials from the API
+        '''
+
+        username = ""
+        secret = ""
+        logging.info('Fetching credentials')
+
+        # Fetch the username
+        response = self.call_mgmt_api('credential/%s' % uuid)
+        if response.status_code == 200:
+            username = response.json()['username']
+        else:
+            logging.error('Failed to get credentials from management API. {}'.format(response.content))
+
+        # Fetch the secret
+        response = self.call_mgmt_api('credential/decrypt/%s' % uuid)
+        if response.status_code == 200:
+            secret = response.json()['secret']
+        else:
+            logging.error('Failed to get credentials from management API. {}'.format(response.content))
+        
+        return (username, secret)
+
     def get_config(self):
         '''
         Fetches the entire agent config including
@@ -168,27 +218,6 @@ class Agent(object):
                 value = message.get(element)
                 return value if len(args) == 1 else self.get_nested(value, *args[1:])
 
-    def extract_observables(self, source, field_mapping):
-        ''' 
-        extracts observables from fields mappings
-        and returns an array of artifacts to add
-        to the alarm 
-        '''
-        
-        observables = []
-        for field in field_mapping:
-            tags = []
-            if 'tags' in field:
-                tags += field['tags']
-
-            value = self.get_nested(source, *field['field'].split('.'))
-            if value:
-                if isinstance(value, list):
-                    value = ' '.join(value)
-                observables += [{"value":value, "dataType":field['dataType'], "tlp":field['tlp'], "tags":tags,}]
-            else:
-                pass
-        return observables
 
     def pair(self):
         '''

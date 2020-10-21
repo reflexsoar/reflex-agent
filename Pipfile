@@ -10,6 +10,7 @@ requests = "*"
 python-dotenv = "*"
 pluginbase = "*"
 elasticsearch = "*"
+chevron = "*"
 
 [requires]
 python_version = "3.8"

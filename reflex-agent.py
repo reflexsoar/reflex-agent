@@ -8,7 +8,7 @@ from functools import partial
 from optparse import OptionParser as op
 from utils.base import Agent, Plugin
 from multiprocessing import Process, Queue
-from elasticsearch import Elasticsearch
+
 
 logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -45,6 +45,9 @@ if __name__ == "__main__":
 
             for i in agent.config['inputs']:
 
+                username = ''
+                secret = ''
+
                 headers = {
                     'Authorization': 'Bearer {}'.format(os.getenv('ACCESS_TOKEN')),
                     'Content-Type': 'application/json'
@@ -54,20 +57,10 @@ if __name__ == "__main__":
 
                 # Fetch the credentials for the input
                 if 'credential' in i:
-                
-                    # Fetch the credential details
-                    logging.info("Fetching credentials for %s" % (i['name']))
-                    response = agent.call_mgmt_api('credential/%s' % i['credential']['uuid'])
-                    if response.status_code == 200:
-                        cred_details = response.json()
-
-                    # Decrypt the secret
-                    response = agent.call_mgmt_api('credential/decrypt/%s' % i['credential']['uuid'])
-                    if response.status_code == 200:
-                        cred_data = response.json()
-                        secret = response.json()['secret']
+                    username, secret = agent.fetch_credentials(i['credential']['uuid'])
 
                 if i['plugin'] == "Elasticsearch":
+
                     context = ssl.create_default_context()
 
                     config = i['config']
@@ -93,9 +86,9 @@ if __name__ == "__main__":
                     
                     logging.info('RUNNING ELASTICSEARCH PLUGIN')
                     if config['auth_method'] == 'http_auth':
-                        es_config['http_auth'] = (cred_details['username'], secret)
+                        es_config['http_auth'] = (username, secret)
                     else:
-                        es_config['api_key'] = (cred_details['username'], secret)
+                        es_config['api_key'] = (username, secret)
 
                     es = Elasticsearch(config['hosts'], **es_config)
                     body = {'query': {'range': {"@timestamp": {"gt": "now-{}".format("60d")}}}, 'size':200}
