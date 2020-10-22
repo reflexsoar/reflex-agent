@@ -8,6 +8,7 @@ from functools import partial
 from optparse import OptionParser as op
 from utils.base import Agent, Plugin
 from multiprocessing import Process, Queue
+from utils.elasticsearch import Elastic
 
 
 logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
@@ -28,7 +29,7 @@ if __name__ == "__main__":
 
     if options.pair:
         logging.info('Pairing agent..')
-        if not agent.pair(options):
+        if not agent.pair():
             exit(1)
     else:
         agent.download_plugins()
@@ -45,8 +46,7 @@ if __name__ == "__main__":
 
             for i in agent.config['inputs']:
 
-                username = ''
-                secret = ''
+                credentials = ()
 
                 headers = {
                     'Authorization': 'Bearer {}'.format(os.getenv('ACCESS_TOKEN')),
@@ -57,72 +57,21 @@ if __name__ == "__main__":
 
                 # Fetch the credentials for the input
                 if 'credential' in i:
-                    username, secret = agent.fetch_credentials(i['credential']['uuid'])
+                    credentials = agent.fetch_credentials(i['credential']['uuid'])
 
                 if i['plugin'] == "Elasticsearch":
 
-                    context = ssl.create_default_context()
-
-                    config = i['config']
-                    if config['cafile'] != "":
-                        # TODO: NEED TO FIGURE OUT WHERE TO STORE THE CAFILE, maybe as DER format in the input? - BC
-                        pass
-                    else:
-                        context = ssl.create_default_context()
-
-                    CONTEXT_VERIFY_MODES = {
-                        "none": ssl.CERT_NONE,
-                        "optional": ssl.CERT_OPTIONAL,
-                        "required": ssl.CERT_REQUIRED
+                    e = Elastic(i['config'], i['field_mapping'], credentials)
+                    events = e.run()
+                    payload = {
+                        'events': []
                     }
-                
-                    context.check_hostname = config['check_hostname']
-                    context.verify_mode = CONTEXT_VERIFY_MODES[config['cert_verification']]
-
-                    es_config = {
-                        "scheme": config['scheme'],
-                        "ssl_context": context
-                    }
-                    
-                    logging.info('RUNNING ELASTICSEARCH PLUGIN')
-                    if config['auth_method'] == 'http_auth':
-                        es_config['http_auth'] = (username, secret)
-                    else:
-                        es_config['api_key'] = (username, secret)
-
-                    es = Elasticsearch(config['hosts'], **es_config)
-                    body = {'query': {'range': {"@timestamp": {"gt": "now-{}".format("60d")}}}, 'size':200}
-                    events = []
-
-                    # Try to query elasticsearch, if it doens't work
-                    # skip processing until the next run
-                    response = None
-                    try:
-                        response = es.search(index=config['index'], body=body)
-                    except Exception as e:
-                        logging.error('Failed to query input %s' % i['name'])
-
-                    if response and response['hits']['total']['value'] > 0:                        
-                        for record in response['hits']['hits']:
-                            source = record['_source']
-                            observables = agent.extract_observables(source, i['field_mapping'])
-                            event = {
-                                'title': source['signal']['rule']['name'],
-                                'description': source['signal']['rule']['description'],
-                                'reference': source['signal']['parent']['id'],
-                                'tags': ['foo','bar'],
-                                'raw_log': json.dumps(source)
-                            }
-                            if observables:
-                                event['observables'] = observables
-                            events.append(event)
-                    headers = {
-                        'content-type': 'application/json'
-                    }
+                    [payload['events'].append(json.loads(e.jsonify())) for e in events]
 
                     if len(events) > 0:
                         logging.info('Pushing %s events to bulk ingest...' % len(events))
-                        response = agent.call_mgmt_api('event/_bulk', data={'events': events}, method='POST')
+                        response = agent.call_mgmt_api('event/_bulk', data=payload, method='POST')
                         if response.status_code == 207:
                             logging.info(response.content)
+
             time.sleep(30)
