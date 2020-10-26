@@ -101,6 +101,7 @@ class Elastic(Process):
             
             # Remove duplicate tags
             event.tags = list(set(event.tags))
+            print(event.reference, event.tags)
 
             events.append(event)
         
@@ -144,10 +145,6 @@ class Elastic(Process):
             return []
 
         
-
-        
-
-
     def run(self):
         '''
         Polls an elasticsearch index at a set interval and pushes
@@ -205,6 +202,7 @@ class Elastic(Process):
 
                 for tech in threat['technique']:
                     tags += [tech['id']]
+
         return list(set(tags))
 
 
