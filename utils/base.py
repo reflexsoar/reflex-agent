@@ -61,15 +61,17 @@ class JSONSerializable(object):
 
 class Event(JSONSerializable):
 
-    title = ""
-    description = ""
-    reference = ""
-    tags = []
-    tlp = 0
-    severity = 0
-    observables = []
-    raw_log = ""
-    source = ""
+    def __init__(self):
+
+        self.title = ""
+        self.description = ""
+        self.reference = ""
+        self.tags = []
+        self.tlp = 0
+        self.severity = 0
+        self.observables = []
+        self.raw_log = ""
+        self.source = ""
 
     def __repr__(self):
         return "<Event reference={}, title={}>".format(self.reference, self.title)
