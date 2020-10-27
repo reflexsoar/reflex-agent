@@ -101,7 +101,6 @@ class Elastic(Process):
             
             # Remove duplicate tags
             event.tags = list(set(event.tags))
-            print(event.reference, event.tags)
 
             events.append(event)
         
