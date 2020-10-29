@@ -36,8 +36,6 @@ if __name__ == "__main__":
         
         logging.info('Running test plugin!')
         plugin = Plugin('utilities')
-        plugin.run_action('uppercase','awesome')
-        exit(1)
         
         while True:
 
