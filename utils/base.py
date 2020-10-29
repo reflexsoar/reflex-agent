@@ -59,6 +59,18 @@ class JSONSerializable(object):
             return attributes.get(name, default)
 
 
+class Observable(JSONSerializable):
+
+    def __init__(self, value, dataType, tlp, tags, ioc, spotted, safe):
+        self.value = value
+        self.dataType = dataType
+        self.tlp = tlp
+        self.tags = tags
+        self.ioc = ioc
+        self.spotted = spotted
+        self.safe = safe
+
+
 class Event(JSONSerializable):
 
     def __init__(self):
@@ -72,6 +84,18 @@ class Event(JSONSerializable):
         self.observables = []
         self.raw_log = ""
         self.source = ""
+
+    def from_dict(self, data):
+        '''
+        Sets the properties of the Event object from a 
+        python dictionary
+        '''
+
+        for k in data:
+            if k == 'observables':
+                setattr(self, k, [Observable(**o) for o in data[k]])
+            else:
+                setattr(self, k, data[k])
 
     def __repr__(self):
         return "<Event reference={}, title={}>".format(self.reference, self.title)
@@ -93,6 +117,16 @@ class Plugin(object):
 
     def register_action(self, name, action):
         self.actions[name] = action
+
+    def run_action(self, name, *args, **kwargs):
+        '''
+        Runs an action by its name and returns the value 
+        if the action returns a value 
+        '''
+        return self.actions[name](*args, **kwargs)
+
+    def __repr__(self):
+        return self.name
 
 
 class Agent(object):
