@@ -32,10 +32,12 @@ if __name__ == "__main__":
         if not agent.pair():
             exit(1)
     else:
-        agent.download_plugins()
+        #agent.download_plugins()
         
         logging.info('Running test plugin!')
-        plugins = Plugin('utilities')
+        plugin = Plugin('utilities')
+        plugin.run_action('uppercase','awesome')
+        exit(1)
         
         while True:
 
