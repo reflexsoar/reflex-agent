@@ -117,7 +117,7 @@ class Elastic(Process):
 
         try:
             # TODO: Move ES_QUERY_HISTORY and ES_QUERY_SIZE input config
-            body = {'query': {'range': {'@timestamp': {'gt': 'now-{}'.format(self.config['search_period'])}}}, 'size':self.config['search_size']}
+            body = {"query": {"range": {"@timestamp": {"gt": "now-{}".format(self.config['search_period'])}}}, "size":self.config['search_size']}
             res = self.conn.search(index=self.config['index'], body=body, scroll='2m') # TODO: Move scroll time to config
 
             scroll_id = res['_scroll_id']
