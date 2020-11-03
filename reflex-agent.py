@@ -63,15 +63,22 @@ if __name__ == "__main__":
 
                     e = Elastic(i['config'], i['field_mapping'], credentials)
                     events = e.run()
-                    payload = {
-                        'events': []
-                    }
-                    [payload['events'].append(json.loads(e.jsonify())) for e in events]
 
-                    if len(events) > 0:
-                        logging.info('Pushing %s events to bulk ingest...' % len(events))
-                        response = agent.call_mgmt_api('event/_bulk', data=payload, method='POST')
-                        if response.status_code == 207:
-                            logging.info(response.content)
+                    n = 100
+
+                    chunks =  [events[i * n:(i + 1) * n] for i in range((len(events) + n - 1) // n)]
+                    for events in chunks:
+
+                        payload = {
+                            'events': []
+                        }
+                        [payload['events'].append(json.loads(e.jsonify())) for e in events]
+
+                        if len(events) > 0:
+                            logging.info('Pushing %s events to bulk ingest...' % len(events))
+                        
+                            response = agent.call_mgmt_api('event/_bulk', data=payload, method='POST')
+                            if response.status_code == 207:
+                                logging.info('Finishing pushing events in {} seconds'.format(response.json()['process_time']))
 
             time.sleep(30)

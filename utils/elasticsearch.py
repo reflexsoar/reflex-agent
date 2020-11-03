@@ -116,9 +116,8 @@ class Elastic(Process):
         events = []
 
         try:
-            # TODO: Move ES_QUERY_HISTORY and ES_QUERY_SIZE input config
             body = {"query": {"range": {"@timestamp": {"gt": "now-{}".format(self.config['search_period'])}}}, "size":self.config['search_size']}
-            res = self.conn.search(index=self.config['index'], body=body, scroll='2m') # TODO: Move scroll time to config
+            res = self.conn.search(index=str(self.config['index']), body=body, scroll='2m') # TODO: Move scroll time to config
 
             scroll_id = res['_scroll_id']
             if 'total' in res['hits']:
@@ -179,7 +178,7 @@ class Elastic(Process):
             args = field.split('.')
         else:
             args = field
-    
+
         if args and message:
             element = args[0]
             if element:
@@ -263,6 +262,7 @@ class Elastic(Process):
             event.source = str(self.config['index']).replace('-*','')
         
         # Get the reference field, this should be unique per event
+
         event.reference = self.get_nested_field(source, self.config['source_reference'])
 
         # Get the event severity field
