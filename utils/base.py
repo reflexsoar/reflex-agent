@@ -10,6 +10,7 @@ import requests
 from zipfile import ZipFile
 from requests import Session, Request
 from pluginbase import PluginBase
+from multiprocessing import Process, Queue
 
 logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
 
@@ -285,6 +286,53 @@ class Agent(object):
             if element:
                 value = message.get(element)
                 return value if len(args) == 1 else self.get_nested(value, *args[1:])
+
+
+    def process_events(self, events):
+        ''' 
+        Splits all the events into multiple pusher processes based on the size
+        of the number of chunks
+        '''
+
+        event_queue = Queue()
+
+        # Set the bulk_size based on the agent configuration, if not set default to 100
+        bulk_size = self.config['bulk_size'] if 'bulk_size' in self.config else 100
+        chunks =  [events[i * bulk_size:(i + 1) * bulk_size] for i in range((len(events) + bulk_size - 1) // bulk_size)]
+
+        # Queue all the events
+        for events in chunks:
+            event_queue.put(events)
+        
+        # Create the bulk pushers
+        bulk_workers = self.config['bulk_workers'] if 'bulk_workers' in self.config else 5
+        workers = []
+
+        for i in range(bulk_workers+1):
+            p = Process(target=self.push_events, args=(event_queue,))
+            workers.append(p)
+        
+        [x.start() for x in workers]
+        [x.join() for x in workers]
+
+    def push_events(self, queue):
+        '''
+        Pushes events to the bulk ingest API
+        '''
+
+        while not queue.empty():
+            payload = {
+                'events': []
+            }
+            events = queue.get()
+            [payload['events'].append(json.loads(e.jsonify())) for e in events]
+
+            if len(events) > 0:
+                logging.info('Pushing %s events to bulk ingest...' % len(events))
+            
+                response = self.call_mgmt_api('event/_bulk', data=payload, method='POST')
+                if response.status_code == 207:
+                    logging.info('Finishing pushing events in {} seconds'.format(response.json()['process_time']))
 
 
     def pair(self):
