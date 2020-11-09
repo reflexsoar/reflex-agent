@@ -164,43 +164,47 @@ class Agent(object):
         Makes calls to the management console
         '''
 
-        # Create a requests session
-        s = Session()
-        if self.options and self.options.ignore_tls:
-            s.verify = False
+        try:
+            # Create a requests session
+            s = Session()
+            if self.options and self.options.ignore_tls:
+                s.verify = False
 
-        # Get some configuration values to make them easier
-        # to access
-        CONSOLE_URL = os.getenv('CONSOLE_URL')
-        CONSOLE_URL = CONSOLE_URL + "/api/v1.0"
-        ACCESS_TOKEN = os.getenv('ACCESS_TOKEN')
-        if token:
-            ACCESS_TOKEN = token
+            # Get some configuration values to make them easier
+            # to access
+            CONSOLE_URL = os.getenv('CONSOLE_URL')
+            CONSOLE_URL = CONSOLE_URL + "/api/v1.0"
+            ACCESS_TOKEN = os.getenv('ACCESS_TOKEN')
+            if token:
+                ACCESS_TOKEN = token
 
-        # Set the HTTP headers
-        headers = {
-            'Authorization': 'Bearer %s' % (ACCESS_TOKEN),
-            'Content-Type': 'application/json'
-        }
+            # Set the HTTP headers
+            headers = {
+                'Authorization': 'Bearer %s' % (ACCESS_TOKEN),
+                'Content-Type': 'application/json'
+            }
 
-        # Dynamically create the request
-        request_data = {
-            'url': "%s/%s" % (CONSOLE_URL, endpoint),
-            'headers': headers
-        }
+            # Dynamically create the request
+            request_data = {
+                'url': "%s/%s" % (CONSOLE_URL, endpoint),
+                'headers': headers
+            }
 
-        if data:
-            request_data['json'] = data
+            if data:
+                request_data['json'] = data
 
-        req = Request(method, **request_data)
-        prepared_req = req.prepare()
+            req = Request(method, **request_data)
+            prepared_req = req.prepare()
 
-        # Send the request
-        # TODO: ADD PROXY SUPPORT
-        # TODO: ADD CUSTOM CA SUPPORT
-        resp = s.send(prepared_req)
+            # Send the request
+            # TODO: ADD PROXY SUPPORT
+            # TODO: ADD CUSTOM CA SUPPORT
+            resp = s.send(prepared_req)
 
-        return resp
+            return resp
+        except Exception as e:
+            logging.error("An error occured while trying to connect to the management API. {}".format(str(e)))
+            return None
 
 
     def fetch_credentials(self, uuid):
@@ -235,7 +239,7 @@ class Agent(object):
         '''
 
         response = self.call_mgmt_api('agent/{}'.format(self.uuid))
-        if response.status_code == 200:
+        if response and response.status_code == 200:
             self.config = response.json()
             return
 
@@ -276,7 +280,7 @@ class Agent(object):
         '''
 
         response = self.call_mgmt_api('agent/heartbeat/{}'.format(self.uuid))
-        if response.status_code == 200:
+        if response and response.status_code == 200:
             return response
 
     def get_nested(self, message, *args):
@@ -320,19 +324,23 @@ class Agent(object):
         Pushes events to the bulk ingest API
         '''
 
-        while not queue.empty():
-            payload = {
-                'events': []
-            }
-            events = queue.get()
-            [payload['events'].append(json.loads(e.jsonify())) for e in events]
+        try:
+            while not queue.empty():
+                payload = {
+                    'events': []
+                }
+                events = queue.get()
+                [payload['events'].append(json.loads(e.jsonify())) for e in events]
 
-            if len(events) > 0:
-                logging.info('Pushing %s events to bulk ingest...' % len(events))
-            
-                response = self.call_mgmt_api('event/_bulk', data=payload, method='POST')
-                if response.status_code == 207:
-                    logging.info('Finishing pushing events in {} seconds'.format(response.json()['process_time']))
+                if len(events) > 0:
+                    logging.info('Pushing %s events to bulk ingest...' % len(events))
+                
+                    response = self.call_mgmt_api('event/_bulk', data=payload, method='POST')
+                    if response.status_code == 207:
+                        logging.info('Finishing pushing events in {} seconds'.format(response.json()['process_time']))
+        except Exception as e:
+            logging.error('An error occurred while trying to push events to the _bulk API. {}'.format(str(e)))
+            return false
 
 
     def pair(self):
