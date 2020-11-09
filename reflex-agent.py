@@ -44,27 +44,27 @@ if __name__ == "__main__":
 
             logging.info('Running agent')
 
-            for i in agent.config['inputs']:
+            if agent.config:
+                for i in agent.config['inputs']:
 
-                credentials = ()
+                    credentials = ()
 
-                headers = {
-                    'Authorization': 'Bearer {}'.format(os.getenv('ACCESS_TOKEN')),
-                    'Content-Type': 'application/json'
-                }
+                    headers = {
+                        'Authorization': 'Bearer {}'.format(os.getenv('ACCESS_TOKEN')),
+                        'Content-Type': 'application/json'
+                    }
 
-                logging.info('Running input %s' % (i['name']))
+                    logging.info('Running input %s' % (i['name']))
 
-                # Fetch the credentials for the input
-                if 'credential' in i:
-                    credentials = agent.fetch_credentials(i['credential']['uuid'])
+                    # Fetch the credentials for the input
+                    if 'credential' in i:
+                        credentials = agent.fetch_credentials(i['credential']['uuid'])
 
-                if i['plugin'] == "Elasticsearch":
+                    if i['plugin'] == "Elasticsearch":
 
-                    e = Elastic(i['config'], i['field_mapping'], credentials)
-                    events = e.run()
+                        e = Elastic(i['config'], i['field_mapping'], credentials)
+                        events = e.run()
 
-                    agent.process_events(events)
-      
+                        agent.process_events(events)
 
             time.sleep(30)
