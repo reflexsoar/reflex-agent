@@ -336,7 +336,7 @@ class Agent(object):
                 payload = {
                     'events': []
                 }
-                events = queue.get()
+                
                 [payload['events'].append(json.loads(e.jsonify())) for e in events]
 
                 if len(events) > 0:
@@ -344,11 +344,10 @@ class Agent(object):
                     logging.info('Pushing %s events to bulk ingest...' % len(events))
                 
                     response = self.call_mgmt_api('event/_bulk', data=payload, method='POST')
-                    #if response.status_code == 207:
-                        #logging.info('Finishing pushing events in {} seconds'.format(response.json()['process_time']))
+                    if response.status_code == 207:
+                        logging.info('Finishing pushing events in {} seconds'.format(response.json()['process_time']))
         except Exception as e:
-            #logging.error('An error occurred while trying to push events to the _bulk API. {}'.format(str(e)))
-            return false
+            logging.error('An error occurred while trying to push events to the _bulk API. {}'.format(str(e)))
 
 
     def pair(self):
