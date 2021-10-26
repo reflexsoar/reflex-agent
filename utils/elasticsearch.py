@@ -64,7 +64,8 @@ class Elastic(Process):
         '''
         
         observables = []
-        for field in self.field_mapping:
+        for field in self.field_mapping['fields']:
+
             tags = []
             if 'tags' in field:
                 tags += field['tags']
@@ -73,7 +74,7 @@ class Elastic(Process):
             if value:
                 if isinstance(value, list):
                     value = ' '.join(value)
-                observables += [{"value":value, "dataType":field['dataType'], "tlp":field['tlp'], "tags":tags,}]
+                observables += [{"value":value, "data_type":field['data_type'], "tlp":field['tlp'], "tags":tags,}]
             else:
                 pass
         return observables
