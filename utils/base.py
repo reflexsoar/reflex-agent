@@ -173,7 +173,7 @@ class Agent(object):
             # Get some configuration values to make them easier
             # to access
             CONSOLE_URL = os.getenv('CONSOLE_URL')
-            CONSOLE_URL = CONSOLE_URL + "/api/v1.0"
+            CONSOLE_URL = CONSOLE_URL + "/api/v2.0"
             ACCESS_TOKEN = os.getenv('ACCESS_TOKEN')
             if token:
                 ACCESS_TOKEN = token
@@ -398,7 +398,7 @@ class Agent(object):
         verify = self.options.ignore_tls or False
 
         response = requests.post(
-            '%s/api/v1.0/agent' % self.options.console, json=agent_data, headers=headers, verify=verify)
+            '%s/api/v2.0/agent' % self.options.console, json=agent_data, headers=headers, verify=verify)
         if response.status_code == 200:
             data = response.json()
             env_file = """CONSOLE_URL='{}'
@@ -411,6 +411,7 @@ AGENT_UUID='{}'""".format(console, data['token'], data['uuid'])
             logging.info('Agent already paired with console.')
             return False
         else:
+            print(response.content)
             error = json.loads(response.content)['message']
             logging.info('Failed to pair agent. %s' % error)
             return False

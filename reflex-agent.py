@@ -58,7 +58,7 @@ if __name__ == "__main__":
 
                     # Fetch the credentials for the input
                     if 'credential' in i:
-                        credentials = agent.fetch_credentials(i['credential']['uuid'])
+                        credentials = agent.fetch_credentials(i['credential'])
 
                     if i['plugin'] == "Elasticsearch":
 
