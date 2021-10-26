@@ -66,5 +66,5 @@ if __name__ == "__main__":
                         events = e.run()
 
                         agent.process_events(events)
-
+            logging.info('Agent sleeping for {} seconds'.format(30))
             time.sleep(30)

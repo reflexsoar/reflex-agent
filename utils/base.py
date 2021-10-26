@@ -311,6 +311,9 @@ class Agent(object):
         # Create the bulk pushers
         bulk_workers = self.config['bulk_workers'] if 'bulk_workers' in self.config else 5
         workers = []
+        
+        for i in range(bulk_workers+1):
+            event_queue.put(None)
 
         for i in range(bulk_workers+1):
             p = Process(target=self.push_events, args=(event_queue,))
@@ -325,23 +328,26 @@ class Agent(object):
         '''
 
         try:
-            while not queue.empty():
+            while True:
+                events = queue.get()
+                if events is None:
+                  break
+                  
                 payload = {
                     'events': []
                 }
-                events = queue.get()
+                
                 [payload['events'].append(json.loads(e.jsonify())) for e in events]
 
                 if len(events) > 0:
                     # TODO: FIX LOGGING
-                    #logging.info('Pushing %s events to bulk ingest...' % len(events))
+                    logging.info('Pushing %s events to bulk ingest...' % len(events))
                 
                     response = self.call_mgmt_api('event/_bulk', data=payload, method='POST')
-                    #if response.status_code == 207:
-                        #logging.info('Finishing pushing events in {} seconds'.format(response.json()['process_time']))
+                    if response.status_code == 207:
+                        logging.info('Finishing pushing events in {} seconds'.format(response.json()['process_time']))
         except Exception as e:
-            #logging.error('An error occurred while trying to push events to the _bulk API. {}'.format(str(e)))
-            return false
+            logging.error('An error occurred while trying to push events to the _bulk API. {}'.format(str(e)))
 
 
     def pair(self):
