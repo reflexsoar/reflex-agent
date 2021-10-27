@@ -257,6 +257,7 @@ class Agent(object):
             hasher = hashlib.sha1()
             response = self.call_mgmt_api(
                 'plugin/download/%s' % plugin['filename'])
+            logging.info(f"Downloading {plugin['name']} plugin...")
             if response.status_code == 200:
 
                 # Compute the hash of the file that was just downloaded
@@ -264,7 +265,7 @@ class Agent(object):
                 checksum = hasher.hexdigest()
                 if plugin['file_hash'] == checksum:
                     with ZipFile(io.BytesIO(response.content)) as z:
-                        logging.info("Extracting ZIP file")
+                        logging.info(f"Extracting ZIP file {plugin['filename']}")
                         for item in z.infolist():
                             if item.filename.endswith(".py"):
                                 item.filename = os.path.basename(item.filename)
