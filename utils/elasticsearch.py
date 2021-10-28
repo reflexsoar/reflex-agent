@@ -72,9 +72,12 @@ class Elastic(Process):
 
             value = self.get_nested_field(source, field['field'])
             if value:
+                # Create a new observable for each item in the list
                 if isinstance(value, list):
-                    value = ' '.join(value)
-                observables += [{"value":value, "data_type":field['data_type'], "tlp":field['tlp'], "tags":tags,}]
+                    for item in value:
+                        observables += [{"value":item, "data_type":field['data_type'], "tlp":field['tlp'], "tags":tags}]
+                else:
+                    observables += [{"value":value, "data_type":field['data_type'], "tlp":field['tlp'], "tags":tags}]
             else:
                 pass
         return observables
