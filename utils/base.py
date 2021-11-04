@@ -172,9 +172,9 @@ class Agent(object):
 
             # Get some configuration values to make them easier
             # to access
-            CONSOLE_URL = os.getenv('CONSOLE_URL')
+            CONSOLE_URL = self.console_url
             CONSOLE_URL = CONSOLE_URL + "/api/v2.0"
-            ACCESS_TOKEN = os.getenv('ACCESS_TOKEN')
+            ACCESS_TOKEN = self.access_token
             if token:
                 ACCESS_TOKEN = token
 
@@ -412,15 +412,19 @@ class Agent(object):
 ACCESS_TOKEN='{}'
 AGENT_UUID='{}'""".format(console, data['token'], data['uuid'])
 
+            self.uuid = data['uuid']
+            self.access_token = data['token']
+            self.console_url = console
+
             with open('.env', 'w+') as f:
                 f.write(env_file)
+
         elif response.status_code == 409:
             logging.info('Agent already paired with console.')
             return False
         else:
-            print(response.content)
             error = json.loads(response.content)['message']
             logging.info('Failed to pair agent. %s' % error)
             return False
-        logging.info('Pairing complete, restart agent to start work.')
+        logging.info('Pairing complete')
         return True
