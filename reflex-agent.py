@@ -28,43 +28,49 @@ if __name__ == "__main__":
     agent = Agent(options=options)
 
     if options.pair:
+        paired = False
         logging.info('Pairing agent..')
-        if not agent.pair():
+        paired = agent.pair()
+        if paired is not True:
             exit(1)
-    else:
-        agent.download_plugins()
-        
-        logging.info('Running test plugin!')
-        plugin = Plugin('utilities')
-        
-        while True:
 
-            agent.get_config()
-            agent.heartbeat()
+    if agent.uuid is None:
+        logging.error('Agent .env file corrupt or missing.  Re-pair the agent')
+        exit(1)
+    
+    agent.download_plugins()
+    
+    logging.info('Running test plugin!')
+    plugin = Plugin('utilities')
+    
+    while True:
 
-            logging.info('Running agent')
+        agent.get_config()
+        agent.heartbeat()
 
-            if agent.config:
-                for i in agent.config['inputs']:
+        logging.info('Running agent')
 
-                    credentials = ()
+        if agent.config:
+            for i in agent.config['inputs']:
 
-                    headers = {
-                        'Authorization': 'Bearer {}'.format(os.getenv('ACCESS_TOKEN')),
-                        'Content-Type': 'application/json'
-                    }
+                credentials = ()
 
-                    logging.info('Running input %s' % (i['name']))
+                headers = {
+                    'Authorization': 'Bearer {}'.format(os.getenv('ACCESS_TOKEN')),
+                    'Content-Type': 'application/json'
+                }
 
-                    # Fetch the credentials for the input
-                    if 'credential' in i:
-                        credentials = agent.fetch_credentials(i['credential'])
+                logging.info('Running input %s' % (i['name']))
 
-                    if i['plugin'] == "Elasticsearch":
+                # Fetch the credentials for the input
+                if 'credential' in i:
+                    credentials = agent.fetch_credentials(i['credential'])
 
-                        e = Elastic(i['config'], i['field_mapping'], credentials)
-                        events = e.run()
+                if i['plugin'] == "Elasticsearch":
 
-                        agent.process_events(events)
-            logging.info('Agent sleeping for {} seconds'.format(30))
-            time.sleep(30)
+                    e = Elastic(i['config'], i['field_mapping'], credentials)
+                    events = e.run()
+
+                    agent.process_events(events)
+        logging.info('Agent sleeping for {} seconds'.format(30))
+        time.sleep(30)
