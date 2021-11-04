@@ -30,8 +30,7 @@ class Elastic(Process):
         '''
 
         if self.config['cafile'] != "":
-            # TODO: Make this work using base64 encoded certificate file
-            raise NotImplementedError
+            context = ssl.create_default_context(cafile=self.config['cafile'])
         else:
             context = ssl.create_default_context()
         context.check_hostname = self.config['check_hostname']
