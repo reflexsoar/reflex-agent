@@ -5,6 +5,7 @@ import ssl
 import base64
 import chevron
 import logging
+import hashlib
 
 from .base import Event
 
@@ -70,13 +71,35 @@ class Elastic(Process):
                 tags += field['tags']
 
             value = self.get_nested_field(source, field['field'])
+
+            source_field = field['field']
+            original_source_field = field['field']
+
+            # Set the source_field as the alias if one is defined
+            if 'alias' in field and field['alias']:
+                source_field = field['alias']
+
             if value:
                 # Create a new observable for each item in the list
                 if isinstance(value, list):
                     for item in value:
-                        observables += [{"value":item, "data_type":field['data_type'], "tlp":field['tlp'], "tags":tags}]
+                        observables += [{
+                            "value":item,
+                            "data_type":field['data_type'],
+                            "tlp":field['tlp'],
+                            "tags":tags,
+                            "source_field": source_field,
+                            "original_source_field": original_source_field
+                        }]
                 else:
-                    observables += [{"value":value, "data_type":field['data_type'], "tlp":field['tlp'], "tags":tags}]
+                    observables += [{
+                        "value":value,
+                        "data_type":field['data_type'],
+                        "tlp":field['tlp'],
+                        "tags":tags,
+                        "source_field": source_field,
+                        "original_source_field": original_source_field
+                    }]
             else:
                 pass
         return observables
@@ -96,11 +119,24 @@ class Elastic(Process):
             if observables:
                 event.observables = observables
 
+            # Add tags to an event based on an array of source fields e.g. signal.rule.tags
+            if 'tag_fields' in self.config:
+                tags = []
+                for tag_field in self.config['tag_fields']:
+                    tags = self.get_nested_field(source, tag_field)
+                    if isinstance(tags, list):
+                        event.tags += tags
+                    else:
+                        event.tags += [tags]
+
+            if 'signature_fields' in self.config:
+                event.generate_signature(source=source, fields=self.config['signature_fields'])
+
             # If this is an Elastic Detection/Signal, extract the 
             # detection tags
             if 'signal' in source:
                 event.tags += self.create_mitre_tags(source['signal']['rule']['threat'])
-                event.tags += source['signal']['rule']['tags']
+            #    event.tags += source['signal']['rule']['tags']
             
             # Remove duplicate tags
             event.tags = list(set(event.tags))
@@ -118,32 +154,32 @@ class Elastic(Process):
 
         events = []
 
-        try:
-            body = {"query": {"range": {"@timestamp": {"gt": "now-{}".format(self.config['search_period'])}}}, "size":self.config['search_size']}
-            res = self.conn.search(index=str(self.config['index']), body=body, scroll='2m') # TODO: Move scroll time to config
+        #try:
+        body = {"query": {"range": {"@timestamp": {"gt": "now-{}".format(self.config['search_period'])}}}, "size":self.config['search_size']}
+        res = self.conn.search(index=str(self.config['index']), body=body, scroll='2m') # TODO: Move scroll time to config
 
-            scroll_id = res['_scroll_id']
-            if 'total' in res['hits']:
-                logging.info(f"Found {len(res['hits']['hits'])} alerts.")
-                scroll_size = res['hits']['total']['value']
-                events += self.parse_events(res['hits']['hits'])
-                                
-            else:
-                scroll_size = 0
-                
-            # Scroll
-            while (scroll_size > 0):
-                logging.info("Scrolling Elasticsearch results...")
-                res = self.conn.scroll(scroll_id = scroll_id, scroll = '2m') # TODO: Move scroll time to config
-                logging.info(f"Found {len(res['hits']['hits'])} alerts.")
-                events += self.parse_events(res['hits']['hits'])
-                scroll_size = len(res['hits']['hits'])
+        scroll_id = res['_scroll_id']
+        if 'total' in res['hits']:
+            logging.info(f"Found {len(res['hits']['hits'])} alerts.")
+            scroll_size = res['hits']['total']['value']
+            events += self.parse_events(res['hits']['hits'])
+                            
+        else:
+            scroll_size = 0
+            
+        # Scroll
+        while (scroll_size > 0):
+            logging.info("Scrolling Elasticsearch results...")
+            res = self.conn.scroll(scroll_id = scroll_id, scroll = '2m') # TODO: Move scroll time to config
+            logging.info(f"Found {len(res['hits']['hits'])} alerts.")
+            events += self.parse_events(res['hits']['hits'])
+            scroll_size = len(res['hits']['hits'])
 
-            return events
+        return events
 
-        except Exception as e:
-            logging.error("Failed to run search, make sure the Elasticsearch cluster is reachable. {}".format(e))
-            return []
+        #except Exception as e:
+        #    logging.error("Failed to run search, make sure the Elasticsearch cluster is reachable. {}".format(e))
+        #    return []
 
         
     def run(self):

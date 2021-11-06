@@ -2,7 +2,7 @@ import os
 import socket
 import logging
 import hashlib
-import time
+import datetime
 import json
 import io
 from functools import partial
@@ -85,6 +85,47 @@ class Event(JSONSerializable):
         self.observables = []
         self.raw_log = ""
         self.source = ""
+        self.signature = ""
+
+
+    def get_nested_field(self, message, field):
+        '''
+        Iterates over nested fields to get the final desired value
+        e.g signal.rule.name should return the value of name
+        '''
+
+        if isinstance(field, str):
+            args = field.split('.')
+        else:
+            args = field
+
+        if args and message:
+            element = args[0]
+            if element:
+                value = message.get(element)
+                return value if len(args) == 1 else self.get_nested_field(value, args[1:])
+    
+
+    def generate_signature(self, source, fields=[]):
+        '''
+        Generates an event signature based on a set of supplied
+        fields
+        '''
+        # Compute the signature for the event based on the signature_fields configuration item
+        signature_values = []
+
+        if fields != []:
+            for signature_field in sorted(fields):
+                value = self.get_nested_field(source, signature_field)
+                if value:
+                    signature_values.append(value)
+        else:
+            signature_values.append(self.title, datetime.datetime.utcnow())
+
+        event_hasher = hashlib.md5()
+        event_hasher.update(str(signature_values).encode())
+        self.signature = event_hasher.hexdigest()
+
 
     def from_dict(self, data):
         '''
@@ -99,7 +140,11 @@ class Event(JSONSerializable):
                 setattr(self, k, data[k])
 
     def __repr__(self):
-        return "<Event reference={}, title={}>".format(self.reference, self.title)
+        return "<Event reference={}, title={}, signature={}>".format(
+                    self.reference,
+                    self.title,
+                    self.signature
+                )
 
 
 class Plugin(object):
