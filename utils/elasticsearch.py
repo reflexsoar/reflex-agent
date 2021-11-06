@@ -155,7 +155,19 @@ class Elastic(Process):
         events = []
 
         #try:
-        body = {"query": {"range": {"@timestamp": {"gt": "now-{}".format(self.config['search_period'])}}}, "size":self.config['search_size']}
+        if 'lucene_filter' in self.config:
+            body = {
+                    "query": {
+                        "bool": { 
+                            "must": [
+                                    {"query_string": { "query": self.config['lucene_filter'] }},
+                                    {"range": {"@timestamp": {"gt": "now-{}".format(self.config['search_period'])}}}
+                                ]
+                            }
+                    },
+                    "size": self.config['search_size']}
+        else:
+            body = {"query": {"range": {"@timestamp": {"gt": "now-{}".format(self.config['search_period'])}}}, "size":self.config['search_size']}
         res = self.conn.search(index=str(self.config['index']), body=body, scroll='2m') # TODO: Move scroll time to config
 
         scroll_id = res['_scroll_id']
