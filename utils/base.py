@@ -214,6 +214,8 @@ class Agent(object):
             s = Session()
             if self.options and self.options.ignore_tls:
                 s.verify = False
+            if self.options and self.options.cacert:
+                s.verify = self.options.cacert
 
             # Get some configuration values to make them easier
             # to access
