@@ -16,7 +16,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 if __name__ == "__main__":
 
-    load_dotenv(dotenv_path="config.env")
+    load_dotenv(dotenv_path="config.txt")
     load_dotenv()
 
     parser = op(description='Reflex Worker Agent')
