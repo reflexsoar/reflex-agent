@@ -27,7 +27,7 @@ if __name__ == "__main__":
     parser.add_option('--proxy', dest='proxy', type=str, action="store", help='If the agent is running behind a proxy you may need to set this')
     parser.add_option('--groups', dest='groups', type=str, action="store", help="The groups this agent should be a part of")
     parser.add_option('--cacert', dest='cacert', type=str, action="store", default='', help="Path to the certificate authority certificate used for the Reflex API")
-    parser.add_option('--ignore-tls', dest='ignore_tls', default=False, action='store_true')
+    parser.add_option('--ignore-tls', dest='ignore_tls', action='store_true')
     (options,args) = parser.parse_args()
 
     # Override commandline arguments with environmental variables
@@ -38,7 +38,7 @@ if __name__ == "__main__":
     options.groups = os.getenv('REFLEX_AGENT_GROUPS') if os.getenv('REFLEX_AGENT_GROUPS') else options.groups
     options.proxy = os.getenv('REFLEX_AGENT_PROXY') if os.getenv('REFLEX_AGENT_PROXY') else options.proxy
     options.cacert = os.getenv('REFLEX_AGENT_CA_CERT') if os.getenv('REFLEX_AGENT_CA_CERT') else options.cacert
-    options.ignore_tls = True if os.getenv('REFLEX_AGENT_IGNORE_TLS') else options.ignore_tls
+    options.ignore_tls = False if os.getenv('REFLEX_AGENT_IGNORE_TLS') else options.ignore_tls
 
     agent = Agent(options=options)
 
