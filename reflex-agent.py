@@ -26,7 +26,7 @@ if __name__ == "__main__":
     parser.add_option('--roles', dest='roles', type=str, action="store", help='The roles that this worker will perform')
     parser.add_option('--proxy', dest='proxy', type=str, action="store", help='If the agent is running behind a proxy you may need to set this')
     parser.add_option('--groups', dest='groups', type=str, action="store", help="The groups this agent should be a part of")
-    parser.add_option('--cacert', dest='cacert', type=str, action="store", default='', help="Path to the certificate authority certificate used for the Reflex API")
+    parser.add_option('--cacert', dest='cacert', type=str, action="store", default=False, help="Path to the certificate authority certificate used for the Reflex API")
     parser.add_option('--ignore-tls', dest='ignore_tls', action='store_true')
     (options,args) = parser.parse_args()
 
