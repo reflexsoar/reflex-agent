@@ -9,12 +9,16 @@ from optparse import OptionParser as op
 from utils.base import Agent, Plugin
 from multiprocessing import Process, Queue
 from utils.elasticsearch import Elastic
-
+from dotenv import load_dotenv
 
 logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 if __name__ == "__main__":
+
+    load_dotenv(dotenv_path="config.env")
+    load_dotenv()
+
     parser = op(description='Reflex Worker Agent')
     parser.add_option('--pair', dest='pair', action='store_true')
     parser.add_option('--token', dest='token', type=str, action="store", help='Token used to pair the agent with the console')
@@ -22,8 +26,18 @@ if __name__ == "__main__":
     parser.add_option('--roles', dest='roles', type=str, action="store", help='The roles that this worker will perform')
     parser.add_option('--proxy', dest='proxy', type=str, action="store", help='If the agent is running behind a proxy you may need to set this')
     parser.add_option('--groups', dest='groups', type=str, action="store", help="The groups this agent should be a part of")
+    parser.add_option('--cacert', dest='cacert', type=str, action="store", default='', help="Path to the certificate authority certificate used for the Reflex API")
     parser.add_option('--ignore-tls', dest='ignore_tls', action='store_true')
     (options,args) = parser.parse_args()
+
+    # Override commandline arguments with environmental variables
+    options.pair = True if os.getenv('REFLEX_AGENT_PAIR_MODE') else False
+    options.console = os.getenv('REFLEX_API_HOST') if os.getenv('REFLEX_API_HOST') else options.console
+    options.token = os.getenv('REFLEX_AGENT_PAIR_TOKEN') if os.getenv('REFLEX_AGENT_PAIR_TOKEN') else options.token
+    options.roles = os.getenv('REFLEX_AGENT_ROLES') if os.getenv('REFLEX_AGENT_ROLES') else options.roles
+    options.groups = os.getenv('REFLEX_AGENT_GROUPS') if os.getenv('REFLEX_AGENT_GROUPS') else options.groups
+    options.proxy = os.getenv('REFLEX_AGENT_PROXY') if os.getenv('REFLEX_AGENT_PROXY') else options.proxy
+    options.cacert = os.getenv('REFLEX_AGENT_CA_CERT') if os.getenv('REFLEX_AGENT_CA_CERT') else options.cacert
 
     agent = Agent(options=options)
 

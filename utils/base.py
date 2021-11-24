@@ -55,7 +55,7 @@ class JSONSerializable(object):
         is_required = error is not None
 
         if is_required and name not in attributes:
-            raise_with_traceback(ValueError(error))
+            raise ValueError(error)
         else:
             return attributes.get(name, default)
 
@@ -294,6 +294,7 @@ class Agent(object):
         loaded and run actions via playbook steps
         '''
 
+        plugins = []
         response = self.call_mgmt_api('plugin')
         if response.status_code == 200:
             plugins = response.json()
@@ -461,7 +462,7 @@ AGENT_UUID='{}'""".format(console, data['token'], data['uuid'])
             self.access_token = data['token']
             self.console_url = console
 
-            with open('.env', 'w+') as f:
+            with open('config.txt', 'w+') as f:
                 f.write(env_file)
 
         elif response.status_code == 409:
