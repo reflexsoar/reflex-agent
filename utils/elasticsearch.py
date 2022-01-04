@@ -142,6 +142,12 @@ class Elastic(Process):
                     else:
                         event.tags += [tags]
 
+            if 'static_tags' in self.config:
+                if isinstance(self.config['static_tags'], list):
+                    event.tags += self.config['static_tags']
+                else:
+                    event.tags += [self.config['static_tags']]
+
             if 'signature_fields' in self.config:
                 event.generate_signature(source=source, fields=self.config['signature_fields'])
 
