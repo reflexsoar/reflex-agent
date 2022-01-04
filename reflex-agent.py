@@ -45,9 +45,7 @@ if __name__ == "__main__":
     options.proxy = os.getenv('REFLEX_AGENT_PROXY') if os.getenv('REFLEX_AGENT_PROXY') else options.proxy
     options.cacert = os.getenv('REFLEX_AGENT_CA_CERT') if os.getenv('REFLEX_AGENT_CA_CERT') else options.cacert
     if not options.ignore_tls and os.getenv('REFLEX_AGENT_IGNORE_TLS'):
-        options.ignore_tls = True
-
-    print(options)
+        options.ignore_tls = False
 
     agent = Agent(options=options)
     
