@@ -120,6 +120,10 @@ class Elastic(Process):
         events = []
         for record in hits:
             source = record['_source']
+            
+            # Clone the _id field of the elasticsearch/opensearch document into _source
+            source['_id'] = record['_id']
+            
             event = self.set_base_alert(source)
             observables = self.extract_observables(source)
             if observables:
