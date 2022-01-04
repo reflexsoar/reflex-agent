@@ -450,7 +450,9 @@ class Agent(object):
         }
 
         # If the user has opted to ignore certificate names
-        verify = self.options.ignore_tls if self.options.ignore_tls else False
+        verify = self.options.ignore_tls
+
+        print(verify)
 
         response = requests.post(
             '%s/api/v2.0/agent' % self.options.console, json=agent_data, headers=headers, verify=verify)

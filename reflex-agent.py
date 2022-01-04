@@ -31,18 +31,26 @@ if __name__ == "__main__":
     (options,args) = parser.parse_args()
 
     # Override commandline arguments with environmental variables
-    if options.agent_uuid is None:
-        options.pair = True if os.getenv('REFLEX_AGENT_PAIR_MODE') else False
-        options.token = os.getenv('REFLEX_AGENT_PAIR_TOKEN') if os.getenv('REFLEX_AGENT_PAIR_TOKEN') else options.token
-        options.console = os.getenv('REFLEX_API_HOST') if os.getenv('REFLEX_API_HOST') else options.console
+    if not options.token and os.getenv('REFLEX_AGENT_PAIR_TOKEN'):
+        options.token = os.getenv('REFLEX_AGENT_PAIR_TOKEN')
+
+    if not options.console and os.getenv('REFLEX_API_HOST'):
+        options.console = os.getenv('REFLEX_API_HOST')
+    
+    if not options.pair and os.getenv('REFLEX_AGENT_PAIR_MODE'):
+        options.pair = True
             
     options.roles = os.getenv('REFLEX_AGENT_ROLES') if os.getenv('REFLEX_AGENT_ROLES') else options.roles
     options.groups = os.getenv('REFLEX_AGENT_GROUPS') if os.getenv('REFLEX_AGENT_GROUPS') else options.groups
     options.proxy = os.getenv('REFLEX_AGENT_PROXY') if os.getenv('REFLEX_AGENT_PROXY') else options.proxy
     options.cacert = os.getenv('REFLEX_AGENT_CA_CERT') if os.getenv('REFLEX_AGENT_CA_CERT') else options.cacert
-    options.ignore_tls = True if os.getenv('REFLEX_AGENT_IGNORE_TLS') else options.ignore_tls
+    if not options.ignore_tls and os.getenv('REFLEX_AGENT_IGNORE_TLS'):
+        options.ignore_tls = True
+
+    print(options)
 
     agent = Agent(options=options)
+    
 
     if options.pair:
         paired = False
