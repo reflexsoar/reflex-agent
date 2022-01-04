@@ -11,6 +11,7 @@ python-dotenv = "*"
 pluginbase = "*"
 elasticsearch = "*"
 chevron = "*"
+opensearch-py = "*"
 
 [requires]
 python_version = "3.8"

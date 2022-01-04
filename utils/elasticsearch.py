@@ -53,7 +53,13 @@ class Elastic(Process):
         else:
             es_config['http_auth'] = self.credentials
 
-        return Elasticsearch(self.config['hosts'], **es_config)
+        if es_config['distro'] == 'opensearch':
+            from opensearchpy import OpenSearch
+            return OpenSearch(self.config['hosts'], **es_config)
+        elif es_config['distro'] == 'elasticsearch':
+            return Elasticsearch(self.config['hosts'], **es_config)
+        else:
+            return Elasticsearch(self.config['hosts'], **es_config)
 
 
     def extract_observables(self, source):
