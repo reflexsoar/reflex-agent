@@ -53,11 +53,12 @@ class Elastic(Process):
         else:
             es_config['http_auth'] = self.credentials
 
-        if es_config['distro'] == 'opensearch':
-            from opensearchpy import OpenSearch
-            return OpenSearch(self.config['hosts'], **es_config)
-        elif es_config['distro'] == 'elasticsearch':
-            return Elasticsearch(self.config['hosts'], **es_config)
+        if 'distro' in self.config:
+            if self.config['distro'] == 'opensearch':
+                from opensearchpy import OpenSearch
+                return OpenSearch(self.config['hosts'], **es_config)
+            else:
+                return Elasticsearch(self.config['hosts'], **es_config)
         else:
             return Elasticsearch(self.config['hosts'], **es_config)
 
@@ -122,8 +123,9 @@ class Elastic(Process):
             source = record['_source']
             
             # Clone the _id field of the elasticsearch/opensearch document into _source
-            source['_id'] = record['_id']
-            
+            if '_id' in record:
+                source['_id'] = record['_id']
+
             event = self.set_base_alert(source)
             observables = self.extract_observables(source)
             if observables:
