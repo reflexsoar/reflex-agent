@@ -462,8 +462,8 @@ class Agent(object):
             if response and response.status_code == 200:
                 data = response.json()
                 env_file = """CONSOLE_URL='{}'
-    ACCESS_TOKEN='{}'
-    AGENT_UUID='{}'""".format(console, data['token'], data['uuid'])
+ACCESS_TOKEN='{}'
+AGENT_UUID='{}'""".format(console, data['token'], data['uuid'])
 
                 self.uuid = data['uuid']
                 self.access_token = data['token']
