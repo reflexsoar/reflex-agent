@@ -212,8 +212,8 @@ class Agent(object):
         try:
             # Create a requests session
             s = Session()
-            if self.options and self.options.ignore_tls:
-                s.verify = False
+            s.verify = self.options.ignore_tls
+
             if self.options and self.options.cacert:
                 s.verify = self.options.cacert
 
