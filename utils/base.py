@@ -402,6 +402,7 @@ class Agent(object):
             logging.error('An error occurred while trying to push events to the _bulk API. {}'.format(str(e)))
 
 
+    @retry(delay=30)
     def pair(self):
         '''
         Pairs an agent with the console, this only needs to be run
@@ -455,28 +456,31 @@ class Agent(object):
         # If the user has opted to ignore certificate names
         verify = self.options.ignore_tls
 
-        response = requests.post(
-            '%s/api/v2.0/agent' % self.options.console, json=agent_data, headers=headers, verify=verify)
-        if response and response.status_code == 200:
-            data = response.json()
-            env_file = """CONSOLE_URL='{}'
-ACCESS_TOKEN='{}'
-AGENT_UUID='{}'""".format(console, data['token'], data['uuid'])
+        try:
+            response = requests.post(
+                '%s/api/v2.0/agent' % self.options.console, json=agent_data, headers=headers, verify=verify)
+            if response and response.status_code == 200:
+                data = response.json()
+                env_file = """CONSOLE_URL='{}'
+    ACCESS_TOKEN='{}'
+    AGENT_UUID='{}'""".format(console, data['token'], data['uuid'])
 
-            self.uuid = data['uuid']
-            self.access_token = data['token']
-            self.console_url = console
+                self.uuid = data['uuid']
+                self.access_token = data['token']
+                self.console_url = console
 
-            with open('config.txt', 'w+') as f:
-                f.write(env_file)
+                with open('config.txt', 'w+') as f:
+                    f.write(env_file)
 
-        elif response.status_code == 409:
-            logging.info('Agent already paired with console.')
-            return False
-        else:
-            error = json.loads(response.content)['message']
+            elif response.status_code == 409:
+                logging.info('Agent already paired with console.')
+                return False
+            else:
+                error = json.loads(response.content)['message']
+                logging.info('Failed to pair agent. %s' % error)
+                return False
+            time.sleep(5)
+            logging.info('Pairing complete')
+            return True
+        except Exception as error:
             logging.info('Failed to pair agent. %s' % error)
-            return False
-        time.sleep(5)
-        logging.info('Pairing complete')
-        return True

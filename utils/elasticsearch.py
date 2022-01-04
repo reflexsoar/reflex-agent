@@ -159,7 +159,7 @@ class Elastic(Process):
         return events
 
 
-    @retry(delay=30)
+    @retry(delay=30, tries=10)
     def poll(self):
         '''
         Polls an Elasticsearch index using a scroll window
@@ -168,45 +168,44 @@ class Elastic(Process):
 
         events = []
 
-        #try:
-        if 'lucene_filter' in self.config:
-            body = {
-                    "query": {
-                        "bool": { 
-                            "must": [
-                                    {"query_string": { "query": self.config['lucene_filter'] }},
-                                    {"range": {"@timestamp": {"gt": "now-{}".format(self.config['search_period'])}}}
-                                ]
-                            }
-                    },
-                    "size": self.config['search_size']}
-        else:
-            body = {"query": {"range": {"@timestamp": {"gt": "now-{}".format(self.config['search_period'])}}}, "size":self.config['search_size']}
-        res = self.conn.search(index=str(self.config['index']), body=body, scroll='2m') # TODO: Move scroll time to config
+        try:
+            if 'lucene_filter' in self.config:
+                body = {
+                        "query": {
+                            "bool": { 
+                                "must": [
+                                        {"query_string": { "query": self.config['lucene_filter'] }},
+                                        {"range": {"@timestamp": {"gt": "now-{}".format(self.config['search_period'])}}}
+                                    ]
+                                }
+                        },
+                        "size": self.config['search_size']}
+            else:
+                body = {"query": {"range": {"@timestamp": {"gt": "now-{}".format(self.config['search_period'])}}}, "size":self.config['search_size']}
+            res = self.conn.search(index=str(self.config['index']), body=body, scroll='2m') # TODO: Move scroll time to config
 
-        scroll_id = res['_scroll_id']
-        if 'total' in res['hits']:
-            logging.info(f"Found {len(res['hits']['hits'])} alerts.")
-            scroll_size = res['hits']['total']['value']
-            events += self.parse_events(res['hits']['hits'])
-                            
-        else:
-            scroll_size = 0
-            
-        # Scroll
-        while (scroll_size > 0):
-            logging.info("Scrolling Elasticsearch results...")
-            res = self.conn.scroll(scroll_id = scroll_id, scroll = '2m') # TODO: Move scroll time to config
-            logging.info(f"Found {len(res['hits']['hits'])} alerts.")
-            events += self.parse_events(res['hits']['hits'])
-            scroll_size = len(res['hits']['hits'])
+            scroll_id = res['_scroll_id']
+            if 'total' in res['hits']:
+                logging.info(f"Found {len(res['hits']['hits'])} alerts.")
+                scroll_size = res['hits']['total']['value']
+                events += self.parse_events(res['hits']['hits'])
+                                
+            else:
+                scroll_size = 0
+                
+            # Scroll
+            while (scroll_size > 0):
+                logging.info("Scrolling Elasticsearch results...")
+                res = self.conn.scroll(scroll_id = scroll_id, scroll = '2m') # TODO: Move scroll time to config
+                logging.info(f"Found {len(res['hits']['hits'])} alerts.")
+                events += self.parse_events(res['hits']['hits'])
+                scroll_size = len(res['hits']['hits'])
 
-        return events
+            return events
 
-        #except Exception as e:
-        #    logging.error("Failed to run search, make sure the Elasticsearch cluster is reachable. {}".format(e))
-        #    return []
-
+        except Exception as e:
+            logging.error("Failed to run search, make sure the Elasticsearch cluster is reachable. {}".format(e))
+            return []
         
     def run(self):
         '''
