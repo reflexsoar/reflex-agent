@@ -1,5 +1,6 @@
 from elasticsearch import Elasticsearch
 from multiprocessing import Process
+from retry import retry
 import json
 import ssl
 import base64
@@ -158,6 +159,7 @@ class Elastic(Process):
         return events
 
 
+    @retry(delay=30)
     def poll(self):
         '''
         Polls an Elasticsearch index using a scroll window

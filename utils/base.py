@@ -5,7 +5,9 @@ import hashlib
 import datetime
 import json
 import io
+import time
 from functools import partial
+from retry import retry
 import requests
 from zipfile import ZipFile
 from requests import Session, Request
@@ -204,6 +206,7 @@ class Agent(object):
             s.close()
         return IP
 
+    @retry(delay=30)
     def call_mgmt_api(self, endpoint, data=None, method='GET', token=None):
         '''
         Makes calls to the management console
@@ -474,5 +477,6 @@ AGENT_UUID='{}'""".format(console, data['token'], data['uuid'])
             error = json.loads(response.content)['message']
             logging.info('Failed to pair agent. %s' % error)
             return False
+        time.sleep(5)
         logging.info('Pairing complete')
         return True

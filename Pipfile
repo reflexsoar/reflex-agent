@@ -12,6 +12,7 @@ pluginbase = "*"
 elasticsearch = "*"
 chevron = "*"
 opensearch-py = "*"
+retry = "*"
 
 [requires]
 python_version = "3.8"

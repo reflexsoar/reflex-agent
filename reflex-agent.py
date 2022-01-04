@@ -49,7 +49,6 @@ if __name__ == "__main__":
 
     agent = Agent(options=options)
     
-
     if options.pair:
         paired = False
         logging.info('Pairing agent..')
