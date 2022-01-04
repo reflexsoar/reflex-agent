@@ -62,8 +62,8 @@ if __name__ == "__main__":
     
     agent.download_plugins()
     
-    logging.info('Running test plugin!')
-    plugin = Plugin('utilities')
+    #logging.info('Running test plugin!')
+    #plugin = Plugin('utilities')
     
     while True:
 
