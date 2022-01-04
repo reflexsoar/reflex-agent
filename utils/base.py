@@ -265,14 +265,14 @@ class Agent(object):
 
         # Fetch the username
         response = self.call_mgmt_api('credential/%s' % uuid)
-        if response.status_code == 200:
+        if response and response.status_code == 200:
             username = response.json()['username']
         else:
             logging.error('Failed to get credentials from management API. {}'.format(response.content))
 
         # Fetch the secret
         response = self.call_mgmt_api('credential/decrypt/%s' % uuid)
-        if response.status_code == 200:
+        if response and response.status_code == 200:
             secret = response.json()['secret']
         else:
             logging.error('Failed to get credentials from management API. {}'.format(response.content))
@@ -298,7 +298,7 @@ class Agent(object):
 
         plugins = []
         response = self.call_mgmt_api('plugin')
-        if response.status_code == 200:
+        if response and response.status_code == 200:
             plugins = response.json()
 
         for plugin in plugins:
@@ -306,7 +306,7 @@ class Agent(object):
             response = self.call_mgmt_api(
                 'plugin/download/%s' % plugin['filename'])
             logging.info(f"Downloading {plugin['name']} plugin...")
-            if response.status_code == 200:
+            if response and response.status_code == 200:
 
                 # Compute the hash of the file that was just downloaded
                 hasher.update(response.content)
@@ -393,7 +393,7 @@ class Agent(object):
                     logging.info('Pushing %s events to bulk ingest...' % len(events))
                 
                     response = self.call_mgmt_api('event/_bulk', data=payload, method='POST')
-                    if response.status_code == 207:
+                    if response and response.status_code == 207:
                         logging.info('Finishing pushing events in {} seconds'.format(response.json()['process_time']))
         except Exception as e:
             logging.error('An error occurred while trying to push events to the _bulk API. {}'.format(str(e)))
@@ -450,11 +450,11 @@ class Agent(object):
         }
 
         # If the user has opted to ignore certificate names
-        verify = self.options.ignore_tls or False
+        verify = self.options.ignore_tls if self.options.ignore_tls else False
 
         response = requests.post(
             '%s/api/v2.0/agent' % self.options.console, json=agent_data, headers=headers, verify=verify)
-        if response.status_code == 200:
+        if response and response.status_code == 200:
             data = response.json()
             env_file = """CONSOLE_URL='{}'
 ACCESS_TOKEN='{}'

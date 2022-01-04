@@ -31,9 +31,11 @@ if __name__ == "__main__":
     (options,args) = parser.parse_args()
 
     # Override commandline arguments with environmental variables
-    options.pair = True if os.getenv('REFLEX_AGENT_PAIR_MODE') else False
-    options.console = os.getenv('REFLEX_API_HOST') if os.getenv('REFLEX_API_HOST') else options.console
-    options.token = os.getenv('REFLEX_AGENT_PAIR_TOKEN') if os.getenv('REFLEX_AGENT_PAIR_TOKEN') else options.token
+    if options.agent_uuid is None:
+        options.pair = True if os.getenv('REFLEX_AGENT_PAIR_MODE') else False
+        options.token = os.getenv('REFLEX_AGENT_PAIR_TOKEN') if os.getenv('REFLEX_AGENT_PAIR_TOKEN') else options.token
+        options.console = os.getenv('REFLEX_API_HOST') if os.getenv('REFLEX_API_HOST') else options.console
+            
     options.roles = os.getenv('REFLEX_AGENT_ROLES') if os.getenv('REFLEX_AGENT_ROLES') else options.roles
     options.groups = os.getenv('REFLEX_AGENT_GROUPS') if os.getenv('REFLEX_AGENT_GROUPS') else options.groups
     options.proxy = os.getenv('REFLEX_AGENT_PROXY') if os.getenv('REFLEX_AGENT_PROXY') else options.proxy
