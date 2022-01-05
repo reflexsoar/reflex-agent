@@ -271,14 +271,16 @@ class Agent(object):
         if response and response.status_code == 200:
             username = response.json()['username']
         else:
-            logging.error('Failed to get credentials from management API. {}'.format(response.content))
+            if response:
+                logging.error('Failed to get credentials from management API. {}'.format(response.content))
 
         # Fetch the secret
         response = self.call_mgmt_api('credential/decrypt/%s' % uuid)
         if response and response.status_code == 200:
             secret = response.json()['secret']
         else:
-            logging.error('Failed to get credentials from management API. {}'.format(response.content))
+            if response:
+                logging.error('Failed to get credentials from management API. {}'.format(response.content))
         
         return (username, secret)
 
