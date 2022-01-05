@@ -158,6 +158,7 @@ class Elastic(Process):
             #    event.tags += source['signal']['rule']['tags']
             
             # Remove duplicate tags
+            event.tags = [tag for tag in event.tags if tag not in ['',None,'-']]
             event.tags = list(set(event.tags))
 
             events.append(event)
