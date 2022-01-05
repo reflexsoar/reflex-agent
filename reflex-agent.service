@@ -5,9 +5,10 @@ After=network.target
 [Service]
 User=reflex-agent
 Group=reflex-agent
+Restart=always
 WorkingDirectory=/etc/reflex-agent
 Environment="PATH=/home/reflex-agent/.local/bin"
-ExecStart=/home/reflex-agent/.local/bin/pipenv run python /etc/reflex-agent/reflex-agent.py 
+ExecStart=/home/reflex-agent/.local/bin/pipenv run python -u /etc/reflex-agent/reflex-agent.py 
 
 [Install]
 WantedBy=multi-user.target
