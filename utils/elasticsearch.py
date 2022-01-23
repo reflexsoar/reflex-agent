@@ -133,14 +133,17 @@ class Elastic(Process):
                 event.observables = observables
 
             # Add tags to an event based on an array of source fields e.g. signal.rule.tags
+            # tags from tag_fields will be added like 'event.code: 4624' where event.code is the
+            # source field and 4625 is the value of the field
             if 'tag_fields' in self.config:
                 tags = []
                 for tag_field in self.config['tag_fields']:
                     tags = self.get_nested_field(source, tag_field)
                     if isinstance(tags, list):
-                        event.tags += tags
+                        for tag in tags:
+                            event.tags += [f"{tag_field}:{tag}"]
                     else:
-                        event.tags += [tags]
+                        event.tags += [f"{tag_field}:{tags}"]
 
             if 'static_tags' in self.config:
                 if isinstance(self.config['static_tags'], list):
@@ -294,16 +297,16 @@ class Elastic(Process):
         '''
 
         severities = {
-            'low': 0,
-            'medium': 1,
-            'high': 2,
-            'critical': 3
+            'low': 1,
+            'medium': 2,
+            'high': 3,
+            'critical': 4
         }
         s = s.lower()
 
         if s in severities:
             return severities[s]
-        return 0
+        return 1
 
 
     def set_base_alert(self, source):
