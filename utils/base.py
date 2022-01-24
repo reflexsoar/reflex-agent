@@ -189,6 +189,9 @@ class Agent(object):
         self.hostname = socket.gethostname()
         self.config = {}
         self.options = options
+        self.event_cache = {}
+        self.cache_key = 'signature'
+        self.cache_ttl = 30 # Number of minutes an item should be in the cache
 
     def agent_ip(self):
         '''
@@ -384,6 +387,7 @@ class Agent(object):
         try:
             while True:
                 events = queue.get()
+                events = self.check_cache(events, self.cache_ttl)
                 if events is None:
                   break
                   
@@ -402,6 +406,43 @@ class Agent(object):
                         logging.info('Finishing pushing events in {} seconds'.format(response.json()['process_time']))
         except Exception as e:
             logging.error('An error occurred while trying to push events to the _bulk API. {}'.format(str(e)))
+
+
+    def check_cache(self, events: list, ttl: int, cache_key: str = "signature") -> list:
+        '''
+        Pushes new items to the cache so they are not sent again unless the
+        TTL on the item has expired
+
+        Parameters:
+            - events (list): A list of events
+            - ttl (int): The number of minutes an item should be in cache
+            - cache_key (str): The attribute to cache
+
+        Return:
+            - events (list): A trimmed list of events that already exist in cache
+        '''
+
+        events_to_send = []
+        ttl = ttl*60
+
+        # Clear expired items from the cache
+        for item in self.event_cache:
+
+            # If the item has been in the cache longer than the TTL remove it
+            if (datetime.datetime.utcnow() - self.event_cache[item]) > ttl:
+                self.event_cache.pop(item)
+
+        # Check each event to see if it is in the cache
+        for event in events:            
+            # Compute the cache key based on the cache_key parameter
+            cache_key = getattr(event, cache_key)
+
+            # Check if the event is in the cache already
+            if cache_key not in self.event_cache:
+                self.event_cache[cache_key] = datetime.datime.utcnow()
+                events_to_send.append(event)
+
+        return events_to_send
 
 
     @retry(delay=30)
