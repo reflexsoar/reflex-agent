@@ -11,6 +11,7 @@ REFLEX_AGENT_PAIR_MODE=true
 REFLEX_API_HOST=http://yourapihosthere
 REFLEX_AGENT_PAIR_TOKEN=your.pairing.token
 REFLEX_AGENT_ROLES=runner,poller
+REFLEX_AGENT_IGNORE_TLS=true
 ```
 
 1. Run the following command `docker run -v $PWD/.env:/.env reflex-agent:latest`
@@ -23,7 +24,8 @@ services:
     reflex-agent:
         image: zeroonesec/reflex-agent:latest
         volumes:
-            - ./.env:/.env
+            - ./.env:/.env:ro
+            - ./config.txt:/config.txt
 ```
 
 ## Manual Run
