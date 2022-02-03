@@ -11,6 +11,7 @@ from multiprocessing import Process, Queue
 from utils.elasticsearch import Elastic
 from dotenv import load_dotenv
 
+
 logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -64,6 +65,8 @@ if __name__ == "__main__":
     
     #logging.info('Running test plugin!')
     #plugin = Plugin('utilities')
+
+    print('AGENT STARTUP: ', agent.event_cache)
     
     while True:
 
@@ -71,6 +74,8 @@ if __name__ == "__main__":
         agent.heartbeat()
 
         logging.info('Running agent')
+
+        print('LOOP START:', agent.event_cache)
 
         if agent.config:
             for i in agent.config['inputs']:
@@ -94,5 +99,13 @@ if __name__ == "__main__":
                     events = e.run()
 
                     agent.process_events(events)
+
+                if i['plugin'] == "MSExchange":
+                    logging.error('MSExchange plugin not implemented yet.')
+                    #e = MSExchange(i['config'], i['field_mapping'], credentials)
+                    #events = e.poll_mailbox()
+
+        print('POLL FINISH: ', agent.event_cache)
+
         logging.info('Agent sleeping for {} seconds'.format(30))
         time.sleep(30)

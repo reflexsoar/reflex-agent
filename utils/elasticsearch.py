@@ -241,7 +241,6 @@ class Elastic(Process):
         self.status = 'stopped'
         self.kill_received = True
 
-
     def get_nested_field(self, message, field):
         '''
         Iterates over nested fields to get the final desired value

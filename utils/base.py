@@ -387,7 +387,8 @@ class Agent(object):
         try:
             while True:
                 events = queue.get()
-                events = self.check_cache(events, self.cache_ttl)
+                #events = self.check_cache(events, self.cache_ttl)
+
                 if events is None:
                   break
                   
@@ -425,24 +426,36 @@ class Agent(object):
         events_to_send = []
         ttl = ttl*60
 
+        print('PRE EXPIRE:', self.event_cache)
+
         # Clear expired items from the cache
         for item in self.event_cache:
 
             # If the item has been in the cache longer than the TTL remove it
-            if (datetime.datetime.utcnow() - self.event_cache[item]) > ttl:
+            print(((datetime.datetime.utcnow() - self.event_cache[item]).seconds/60) , ttl)
+            if ((datetime.datetime.utcnow() - self.event_cache[item]).seconds/60) > ttl:
                 self.event_cache.pop(item)
 
+        print('POST EXPIRE:', self.event_cache)
+
         # Check each event to see if it is in the cache
-        for event in events:            
-            # Compute the cache key based on the cache_key parameter
-            cache_key = getattr(event, cache_key)
+        if events:
+            for event in events:            
+                # Compute the cache key based on the cache_key parameter
+                key = getattr(event, cache_key)
 
-            # Check if the event is in the cache already
-            if cache_key not in self.event_cache:
-                self.event_cache[cache_key] = datetime.datime.utcnow()
-                events_to_send.append(event)
+                # Check if the event is in the cache already
+                if key not in self.event_cache:
+                    self.event_cache[key] = datetime.datetime.utcnow()
+                    events_to_send.append(event)
 
-        return events_to_send
+            if len(events_to_send) == 0:
+                return None
+
+            print('POST ADDS: ', self.event_cache)
+            return events_to_send
+        return None
+
 
 
     @retry(delay=30)
