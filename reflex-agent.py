@@ -65,17 +65,13 @@ if __name__ == "__main__":
     
     #logging.info('Running test plugin!')
     #plugin = Plugin('utilities')
-
-    print('AGENT STARTUP: ', agent.event_cache)
-    
+   
     while True:
 
         agent.get_config()
         agent.heartbeat()
 
         logging.info('Running agent')
-
-        print('LOOP START:', agent.event_cache)
 
         if agent.config:
             for i in agent.config['inputs']:
@@ -104,8 +100,6 @@ if __name__ == "__main__":
                     logging.error('MSExchange plugin not implemented yet.')
                     #e = MSExchange(i['config'], i['field_mapping'], credentials)
                     #events = e.poll_mailbox()
-
-        print('POLL FINISH: ', agent.event_cache)
 
         logging.info('Agent sleeping for {} seconds'.format(30))
         time.sleep(30)

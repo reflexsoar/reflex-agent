@@ -296,6 +296,14 @@ class Agent(object):
         response = self.call_mgmt_api('agent/{}'.format(self.uuid))
         if response and response.status_code == 200:
             self.config = response.json()
+            if len(self.config['groups']) > 0:
+                for group in self.config['groups']:
+                    self.config['inputs'] += group['inputs']
+
+            self.config['inputs'] = [json.loads(i) for i in set([
+                    json.dumps(d, sort_keys=True) for d in self.config['inputs']
+                ])]
+
             return
 
     def download_plugins(self):
