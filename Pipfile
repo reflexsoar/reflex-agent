@@ -13,6 +13,7 @@ elasticsearch = "*"
 chevron = "*"
 opensearch-py = "*"
 retry = "*"
+ldap3 = "*"
 
 [requires]
 python_version = "3.8"

@@ -10,6 +10,7 @@ from utils.base import Agent, Plugin
 from multiprocessing import Process, Queue
 from utils.elasticsearch import Elastic
 from dotenv import load_dotenv
+from utils.ldap import LDAPSource
 
 
 logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
@@ -42,7 +43,7 @@ if __name__ == "__main__":
         options.pair = True
             
     options.roles = os.getenv('REFLEX_AGENT_ROLES') if os.getenv('REFLEX_AGENT_ROLES') else options.roles
-    options.groups = os.getenv('REFLEX_AGENT_GROUPS').split(',') if os.getenv('REFLEX_AGENT_GROUPS') else options.groups
+    options.groups = os.getenv('REFLEX_AGENT_GROUPS') if os.getenv('REFLEX_AGENT_GROUPS') else options.groups
     options.proxy = os.getenv('REFLEX_AGENT_PROXY') if os.getenv('REFLEX_AGENT_PROXY') else options.proxy
     options.cacert = os.getenv('REFLEX_AGENT_CA_CERT') if os.getenv('REFLEX_AGENT_CA_CERT') else options.cacert
     if options.ignore_tls and os.getenv('REFLEX_AGENT_IGNORE_TLS'):
@@ -100,6 +101,21 @@ if __name__ == "__main__":
                     logging.error('MSExchange plugin not implemented yet.')
                     #e = MSExchange(i['config'], i['field_mapping'], credentials)
                     #events = e.poll_mailbox()
+
+                if i['plugin'] == "LDAP":
+                    logging.error('LDAP plugin not implemented yet.')
+
+                    l = LDAPSource(i['config'], credentials)
+                    items = l.query()
+
+                    """
+                    threat_list_config = {
+                        'threat_list_uuid': 'xxxx-xxxx-xxxx-xxxx-xxxx',
+                        'action': 'append|replace'
+                    }
+                    """
+
+                    agent.push_intel(items, i['threat_list_config'])
 
         logging.info('Agent sleeping for {} seconds'.format(30))
         time.sleep(30)
