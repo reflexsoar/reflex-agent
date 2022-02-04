@@ -23,6 +23,7 @@ class Elastic(Process):
         self.credentials = credentials
         self.field_mapping = field_mapping
         self.conn = self.build_es_connection()
+        self.plugin_type = 'events'
 
     
     def build_es_connection(self):
