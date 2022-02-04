@@ -44,14 +44,12 @@ if __name__ == "__main__":
             
     options.roles = os.getenv('REFLEX_AGENT_ROLES') if os.getenv('REFLEX_AGENT_ROLES') else options.roles
     options.groups = os.getenv('REFLEX_AGENT_GROUPS') if os.getenv('REFLEX_AGENT_GROUPS') else options.groups
-    print(os.getenv('REFLEX_AGENT_GROUPS'))
+    
     options.proxy = os.getenv('REFLEX_AGENT_PROXY') if os.getenv('REFLEX_AGENT_PROXY') else options.proxy
     options.cacert = os.getenv('REFLEX_AGENT_CA_CERT') if os.getenv('REFLEX_AGENT_CA_CERT') else options.cacert
     if options.ignore_tls and os.getenv('REFLEX_AGENT_IGNORE_TLS'):
         options.ignore_tls = False
     
-    exit()
-
     agent = Agent(options=options)
     
     if options.pair:
