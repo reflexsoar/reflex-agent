@@ -444,8 +444,6 @@ class Agent(object):
             if ((datetime.datetime.utcnow() - self.event_cache[item]).seconds/60) > ttl:
                 self.event_cache.pop(item)
 
-        print('POST EXPIRE:', self.event_cache)
-
         # Check each event to see if it is in the cache
         if events:
             for event in events:            
@@ -485,6 +483,8 @@ class Agent(object):
         if not self.options.roles:
             errors.append('Missing argument --roles')
 
+        
+
         roles = self.options.roles.split(',')
         token = self.options.token
         console = self.options.console
@@ -504,8 +504,11 @@ class Agent(object):
         agent_data = {
             "name": self.hostname,
             "ip_address": self.ip,
-            "roles": roles
+            "roles": roles            
         }
+
+        if self.options.groups:
+            agent_data['groups'] = self.options.groups
 
         # Check if any agent groups are defined and
         # split them out into an array if they are
