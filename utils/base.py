@@ -356,6 +356,33 @@ class Agent(object):
                 value = message.get(element)
                 return value if len(args) == 1 else self.get_nested(value, *args[1:])
 
+    
+    def push_intel(self, items: list, intel_list_config: dict) -> None:
+        '''
+        Pushes a list of values to an intel list based on the configuration
+        provided in intel_list_config
+        
+        Parameters:
+            items (list): The list of items to add to the list
+            intel_list_config (dict): The details about where to send the intel and how
+
+        Example Intel Config
+            intel_list_config = {
+                'intel_list_uuid': 'xxxxx-xxxx-xxx-xxxx-xxxx',
+                'action': 'replace'
+            }
+        
+        Returns: None
+        '''
+
+        if intel_list_config['action'] not in ['replace','append']:
+            raise ValueError('The Intel list action must be "replace" or "append"')
+
+        #if intel_list_config['action'] == 'append':
+
+            # Call /api/v2.0/
+            #response = self.call_mgmt_api('agent/heartbeat/{}'.format(self.uuid))
+
 
     def process_events(self, events):
         ''' 
@@ -509,6 +536,7 @@ class Agent(object):
 
         if self.options.groups:
             agent_data['groups'] = self.options.groups
+
 
         # Check if any agent groups are defined and
         # split them out into an array if they are
