@@ -142,9 +142,10 @@ class Elastic(Process):
                     tags = self.get_nested_field(source, tag_field)
                     if isinstance(tags, list):
                         for tag in tags:
-                            event.tags += [f"{tag_field}:{tag}"]
+                            if tag:
+                                event.tags += [f"{tag_field}: {tag}"]
                     else:
-                        event.tags += [f"{tag_field}:{tags}"]
+                        event.tags += [f"{tag_field}: {tags}"]
 
             if 'static_tags' in self.config:
                 if isinstance(self.config['static_tags'], list):
