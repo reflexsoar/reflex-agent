@@ -75,6 +75,15 @@ class Elastic(Process):
         observables = []
         for field in self.field_mapping['fields']:
 
+            if 'ioc' not in field:
+                field['ioc'] = False
+
+            if 'spotted' not in field:
+                field['spotted'] = False
+
+            if 'safe' not in field:
+                field['safe'] = False
+
             tags = []
             if 'tags' in field:
                 tags += field['tags']
@@ -96,6 +105,9 @@ class Elastic(Process):
                             "value":item,
                             "data_type":field['data_type'],
                             "tlp":field['tlp'],
+                            "ioc": field['ioc'],
+                            "safe": field['safe'],
+                            "spotted": field['spotted'],
                             "tags":tags,
                             "source_field": source_field,
                             "original_source_field": original_source_field
@@ -105,6 +117,9 @@ class Elastic(Process):
                         "value":value,
                         "data_type":field['data_type'],
                         "tlp":field['tlp'],
+                        "ioc": field['ioc'],
+                        "safe": field['safe'],
+                        "spotted": field['spotted'],
                         "tags":tags,
                         "source_field": source_field,
                         "original_source_field": original_source_field
