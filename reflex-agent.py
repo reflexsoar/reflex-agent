@@ -22,6 +22,7 @@ if __name__ == "__main__":
     load_dotenv()
 
     parser = op(description='Reflex Worker Agent')
+    parser.add_option('--name', dest='name', type=str, action="store", help='A friendly name to call this agent.  Overrides the default system name.')
     parser.add_option('--pair', dest='pair', action='store_true')
     parser.add_option('--token', dest='token', type=str, action="store", help='Token used to pair the agent with the console')
     parser.add_option('--console', dest='console', type=str, action="store", help='FQDN name of the Reflex console')
@@ -41,6 +42,9 @@ if __name__ == "__main__":
     
     if not options.pair and os.getenv('REFLEX_AGENT_PAIR_MODE'):
         options.pair = True
+
+    if not options.name and os.getenv('REFLEX_AGENT_NAME'):
+        options.name = os.getenv('REFLEX_AGENT_NAME')
             
     options.roles = os.getenv('REFLEX_AGENT_ROLES') if os.getenv('REFLEX_AGENT_ROLES') else options.roles
     options.groups = os.getenv('REFLEX_AGENT_GROUPS') if os.getenv('REFLEX_AGENT_GROUPS') else options.groups
@@ -63,8 +67,7 @@ if __name__ == "__main__":
         logging.error('Agent .env file corrupt or missing.  Re-pair the agent')
         exit(1)
     
-    agent.download_plugins()
-    
+    #agent.download_plugins()    
     #logging.info('Running test plugin!')
     #plugin = Plugin('utilities')
    

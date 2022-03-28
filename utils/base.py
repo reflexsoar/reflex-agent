@@ -186,7 +186,12 @@ class Agent(object):
         self.access_token = os.getenv('ACCESS_TOKEN')
         self.console_url = os.getenv('CONSOLE_URL')
         self.ip = self.agent_ip()
-        self.hostname = socket.gethostname()
+
+        if not options.name:
+            self.hostname = socket.gethostname()
+        else:
+            self.hostname = options.name
+            
         self.config = {}
         self.options = options
         self.event_cache = {}
