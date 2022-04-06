@@ -265,6 +265,11 @@ class Elastic(Process):
         '''
 
         if isinstance(field, str):
+
+            # If the field exists as a flat field with .'s in it return the field
+            if field in message:
+                return message[field]
+                
             args = field.split('.')
         else:
             args = field
@@ -352,8 +357,11 @@ class Elastic(Process):
             event.source = str(self.config['index']).replace('-*','')
         
         # Get the reference field, this should be unique per event
-
         event.reference = self.get_nested_field(source, self.config['source_reference'])
+
+        # Find the original event date if supplied
+        if 'original_date_field' in self.config:
+            event.original_date = self.get_nested_field(source, self.config['original_date_field']).replace('Z','')
 
         # Get the event severity field
         # if none is defined, default to Low

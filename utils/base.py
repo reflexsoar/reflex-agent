@@ -48,7 +48,7 @@ class JSONSerializable(object):
 
     def jsonify(self):
         ''' Returns a json string of the object '''
-
+        
         return json.dumps(self, sort_keys=True, indent=4, cls=CustomJsonEncoder)
 
     def attr(self, attributes, name, default, error=None):
@@ -97,6 +97,9 @@ class Event(JSONSerializable):
         '''
 
         if isinstance(field, str):
+            # If the field exists as a flat field with .'s in it return the field
+            if field in message:
+                return message[field]
             args = field.split('.')
         else:
             args = field
@@ -402,22 +405,23 @@ class Agent(object):
         chunks =  [events[i * bulk_size:(i + 1) * bulk_size] for i in range((len(events) + bulk_size - 1) // bulk_size)]
 
         # Queue all the events
-        for events in chunks:
-            event_queue.put(events)
-        
-        # Create the bulk pushers
-        bulk_workers = self.config['bulk_workers'] if 'bulk_workers' in self.config else 5
-        workers = []
-        
-        for i in range(bulk_workers+1):
-            event_queue.put(None)
+        if events:
+            for events in chunks:
+                event_queue.put(events)
+            
+            # Create the bulk pushers
+            bulk_workers = self.config['bulk_workers'] if 'bulk_workers' in self.config else 5
+            workers = []
+            
+            for i in range(bulk_workers+1):
+                event_queue.put(None)
 
-        for i in range(bulk_workers+1):
-            p = Process(target=self.push_events, args=(event_queue,))
-            workers.append(p)
-        
-        [x.start() for x in workers]
-        [x.join() for x in workers]
+            for i in range(bulk_workers+1):
+                p = Process(target=self.push_events, args=(event_queue,))
+                workers.append(p)
+            
+            [x.start() for x in workers]
+            [x.join() for x in workers]
 
     def push_events(self, queue):
         '''
@@ -445,6 +449,7 @@ class Agent(object):
                     response = self.call_mgmt_api('event/_bulk', data=payload, method='POST')
                     if response and response.status_code == 207:
                         logging.info('Finishing pushing events in {} seconds'.format(response.json()['process_time']))
+                        
         except Exception as e:
             logging.error('An error occurred while trying to push events to the _bulk API. {}'.format(str(e)))
 
