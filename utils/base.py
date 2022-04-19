@@ -2,10 +2,12 @@ import os
 import socket
 import logging
 import hashlib
-import time
+import datetime
 import json
 import io
+import time
 from functools import partial
+from retry import retry
 import requests
 from zipfile import ZipFile
 from requests import Session, Request
@@ -46,7 +48,7 @@ class JSONSerializable(object):
 
     def jsonify(self):
         ''' Returns a json string of the object '''
-
+        
         return json.dumps(self, sort_keys=True, indent=4, cls=CustomJsonEncoder)
 
     def attr(self, attributes, name, default, error=None):
@@ -55,7 +57,7 @@ class JSONSerializable(object):
         is_required = error is not None
 
         if is_required and name not in attributes:
-            raise_with_traceback(ValueError(error))
+            raise ValueError(error)
         else:
             return attributes.get(name, default)
 
@@ -85,6 +87,50 @@ class Event(JSONSerializable):
         self.observables = []
         self.raw_log = ""
         self.source = ""
+        self.signature = ""
+
+
+    def get_nested_field(self, message, field):
+        '''
+        Iterates over nested fields to get the final desired value
+        e.g signal.rule.name should return the value of name
+        '''
+
+        if isinstance(field, str):
+            # If the field exists as a flat field with .'s in it return the field
+            if field in message:
+                return message[field]
+            args = field.split('.')
+        else:
+            args = field
+
+        if args and message:
+            element = args[0]
+            if element:
+                value = message.get(element)
+                return value if len(args) == 1 else self.get_nested_field(value, args[1:])
+    
+
+    def generate_signature(self, source, fields=[]):
+        '''
+        Generates an event signature based on a set of supplied
+        fields
+        '''
+        # Compute the signature for the event based on the signature_fields configuration item
+        signature_values = []
+
+        if fields != []:
+            for signature_field in sorted(fields):
+                value = self.get_nested_field(source, signature_field)
+                if value:
+                    signature_values.append(value)
+        else:
+            signature_values.append(self.title, datetime.datetime.utcnow())
+
+        event_hasher = hashlib.md5()
+        event_hasher.update(str(signature_values).encode())
+        self.signature = event_hasher.hexdigest()
+
 
     def from_dict(self, data):
         '''
@@ -99,7 +145,11 @@ class Event(JSONSerializable):
                 setattr(self, k, data[k])
 
     def __repr__(self):
-        return "<Event reference={}, title={}>".format(self.reference, self.title)
+        return "<Event reference={}, title={}, signature={}>".format(
+                    self.reference,
+                    self.title,
+                    self.signature
+                )
 
 
 class Plugin(object):
@@ -139,9 +189,17 @@ class Agent(object):
         self.access_token = os.getenv('ACCESS_TOKEN')
         self.console_url = os.getenv('CONSOLE_URL')
         self.ip = self.agent_ip()
-        self.hostname = socket.gethostname()
+
+        if not options.name:
+            self.hostname = socket.gethostname()
+        else:
+            self.hostname = options.name
+            
         self.config = {}
         self.options = options
+        self.event_cache = {}
+        self.cache_key = 'signature'
+        self.cache_ttl = 30 # Number of minutes an item should be in the cache
 
     def agent_ip(self):
         '''
@@ -159,6 +217,7 @@ class Agent(object):
             s.close()
         return IP
 
+    @retry(delay=30)
     def call_mgmt_api(self, endpoint, data=None, method='GET', token=None):
         '''
         Makes calls to the management console
@@ -167,14 +226,16 @@ class Agent(object):
         try:
             # Create a requests session
             s = Session()
-            if self.options and self.options.ignore_tls:
-                s.verify = False
+            s.verify = self.options.ignore_tls
+
+            if self.options and self.options.cacert:
+                s.verify = self.options.cacert
 
             # Get some configuration values to make them easier
             # to access
-            CONSOLE_URL = os.getenv('CONSOLE_URL')
-            CONSOLE_URL = CONSOLE_URL + "/api/v1.0"
-            ACCESS_TOKEN = os.getenv('ACCESS_TOKEN')
+            CONSOLE_URL = self.console_url
+            CONSOLE_URL = CONSOLE_URL + "/api/v2.0"
+            ACCESS_TOKEN = self.access_token
             if token:
                 ACCESS_TOKEN = token
 
@@ -218,17 +279,19 @@ class Agent(object):
 
         # Fetch the username
         response = self.call_mgmt_api('credential/%s' % uuid)
-        if response.status_code == 200:
+        if response and response.status_code == 200:
             username = response.json()['username']
         else:
-            logging.error('Failed to get credentials from management API. {}'.format(response.content))
+            if response:
+                logging.error('Failed to get credentials from management API. {}'.format(response.content))
 
         # Fetch the secret
         response = self.call_mgmt_api('credential/decrypt/%s' % uuid)
-        if response.status_code == 200:
+        if response and response.status_code == 200:
             secret = response.json()['secret']
         else:
-            logging.error('Failed to get credentials from management API. {}'.format(response.content))
+            if response:
+                logging.error('Failed to get credentials from management API. {}'.format(response.content))
         
         return (username, secret)
 
@@ -241,6 +304,14 @@ class Agent(object):
         response = self.call_mgmt_api('agent/{}'.format(self.uuid))
         if response and response.status_code == 200:
             self.config = response.json()
+            if len(self.config['groups']) > 0:
+                for group in self.config['groups']:
+                    self.config['inputs'] += group['inputs']
+
+            self.config['inputs'] = [json.loads(i) for i in set([
+                    json.dumps(d, sort_keys=True) for d in self.config['inputs']
+                ])]
+
             return
 
     def download_plugins(self):
@@ -249,22 +320,24 @@ class Agent(object):
         loaded and run actions via playbook steps
         '''
 
+        plugins = []
         response = self.call_mgmt_api('plugin')
-        if response.status_code == 200:
+        if response and response.status_code == 200:
             plugins = response.json()
 
         for plugin in plugins:
             hasher = hashlib.sha1()
             response = self.call_mgmt_api(
                 'plugin/download/%s' % plugin['filename'])
-            if response.status_code == 200:
+            logging.info(f"Downloading {plugin['name']} plugin...")
+            if response and response.status_code == 200:
 
                 # Compute the hash of the file that was just downloaded
                 hasher.update(response.content)
                 checksum = hasher.hexdigest()
                 if plugin['file_hash'] == checksum:
                     with ZipFile(io.BytesIO(response.content)) as z:
-                        logging.info("Extracting ZIP file")
+                        logging.info(f"Extracting ZIP file {plugin['filename']}")
                         for item in z.infolist():
                             if item.filename.endswith(".py"):
                                 item.filename = os.path.basename(item.filename)
@@ -291,6 +364,33 @@ class Agent(object):
                 value = message.get(element)
                 return value if len(args) == 1 else self.get_nested(value, *args[1:])
 
+    
+    def push_intel(self, items: list, intel_list_config: dict) -> None:
+        '''
+        Pushes a list of values to an intel list based on the configuration
+        provided in intel_list_config
+        
+        Parameters:
+            items (list): The list of items to add to the list
+            intel_list_config (dict): The details about where to send the intel and how
+
+        Example Intel Config
+            intel_list_config = {
+                'intel_list_uuid': 'xxxxx-xxxx-xxx-xxxx-xxxx',
+                'action': 'replace'
+            }
+        
+        Returns: None
+        '''
+
+        if intel_list_config['action'] not in ['replace','append']:
+            raise ValueError('The Intel list action must be "replace" or "append"')
+
+        #if intel_list_config['action'] == 'append':
+
+            # Call /api/v2.0/
+            #response = self.call_mgmt_api('agent/heartbeat/{}'.format(self.uuid))
+
 
     def process_events(self, events):
         ''' 
@@ -305,22 +405,23 @@ class Agent(object):
         chunks =  [events[i * bulk_size:(i + 1) * bulk_size] for i in range((len(events) + bulk_size - 1) // bulk_size)]
 
         # Queue all the events
-        for events in chunks:
-            event_queue.put(events)
-        
-        # Create the bulk pushers
-        bulk_workers = self.config['bulk_workers'] if 'bulk_workers' in self.config else 5
-        workers = []
-        
-        for i in range(bulk_workers+1):
-            event_queue.put(None)
+        if events:
+            for events in chunks:
+                event_queue.put(events)
+            
+            # Create the bulk pushers
+            bulk_workers = self.config['bulk_workers'] if 'bulk_workers' in self.config else 5
+            workers = []
+            
+            for i in range(bulk_workers+1):
+                event_queue.put(None)
 
-        for i in range(bulk_workers+1):
-            p = Process(target=self.push_events, args=(event_queue,))
-            workers.append(p)
-        
-        [x.start() for x in workers]
-        [x.join() for x in workers]
+            for i in range(bulk_workers+1):
+                p = Process(target=self.push_events, args=(event_queue,))
+                workers.append(p)
+            
+            [x.start() for x in workers]
+            [x.join() for x in workers]
 
     def push_events(self, queue):
         '''
@@ -330,6 +431,8 @@ class Agent(object):
         try:
             while True:
                 events = queue.get()
+                #events = self.check_cache(events, self.cache_ttl)
+
                 if events is None:
                   break
                   
@@ -344,12 +447,61 @@ class Agent(object):
                     logging.info('Pushing %s events to bulk ingest...' % len(events))
                 
                     response = self.call_mgmt_api('event/_bulk', data=payload, method='POST')
-                    if response.status_code == 207:
+                    if response and response.status_code == 207:
                         logging.info('Finishing pushing events in {} seconds'.format(response.json()['process_time']))
+                        
         except Exception as e:
             logging.error('An error occurred while trying to push events to the _bulk API. {}'.format(str(e)))
 
 
+    def check_cache(self, events: list, ttl: int, cache_key: str = "signature") -> list:
+        '''
+        Pushes new items to the cache so they are not sent again unless the
+        TTL on the item has expired
+
+        Parameters:
+            - events (list): A list of events
+            - ttl (int): The number of minutes an item should be in cache
+            - cache_key (str): The attribute to cache
+
+        Return:
+            - events (list): A trimmed list of events that already exist in cache
+        '''
+
+        events_to_send = []
+        ttl = ttl*60
+
+        print('PRE EXPIRE:', self.event_cache)
+
+        # Clear expired items from the cache
+        for item in self.event_cache:
+
+            # If the item has been in the cache longer than the TTL remove it
+            print(((datetime.datetime.utcnow() - self.event_cache[item]).seconds/60) , ttl)
+            if ((datetime.datetime.utcnow() - self.event_cache[item]).seconds/60) > ttl:
+                self.event_cache.pop(item)
+
+        # Check each event to see if it is in the cache
+        if events:
+            for event in events:            
+                # Compute the cache key based on the cache_key parameter
+                key = getattr(event, cache_key)
+
+                # Check if the event is in the cache already
+                if key not in self.event_cache:
+                    self.event_cache[key] = datetime.datetime.utcnow()
+                    events_to_send.append(event)
+
+            if len(events_to_send) == 0:
+                return None
+
+            print('POST ADDS: ', self.event_cache)
+            return events_to_send
+        return None
+
+
+
+    @retry(delay=30)
     def pair(self):
         '''
         Pairs an agent with the console, this only needs to be run
@@ -367,6 +519,8 @@ class Agent(object):
 
         if not self.options.roles:
             errors.append('Missing argument --roles')
+
+        
 
         roles = self.options.roles.split(',')
         token = self.options.token
@@ -387,8 +541,12 @@ class Agent(object):
         agent_data = {
             "name": self.hostname,
             "ip_address": self.ip,
-            "roles": roles
+            "roles": roles            
         }
+
+        if self.options.groups:
+            agent_data['groups'] = self.options.groups
+
 
         # Check if any agent groups are defined and
         # split them out into an array if they are
@@ -401,24 +559,33 @@ class Agent(object):
         }
 
         # If the user has opted to ignore certificate names
-        verify = self.options.ignore_tls or False
+        verify = self.options.ignore_tls
 
-        response = requests.post(
-            '%s/api/v1.0/agent' % self.options.console, json=agent_data, headers=headers, verify=verify)
-        if response.status_code == 200:
-            data = response.json()
-            env_file = """CONSOLE_URL='{}'
+        try:
+            response = requests.post(
+                '%s/api/v2.0/agent' % self.options.console, json=agent_data, headers=headers, verify=verify)
+            if response and response.status_code == 200:
+                data = response.json()
+                env_file = """CONSOLE_URL='{}'
 ACCESS_TOKEN='{}'
 AGENT_UUID='{}'""".format(console, data['token'], data['uuid'])
 
-            with open('.env', 'w+') as f:
-                f.write(env_file)
-        elif response.status_code == 409:
-            logging.info('Agent already paired with console.')
-            return False
-        else:
-            error = json.loads(response.content)['message']
+                self.uuid = data['uuid']
+                self.access_token = data['token']
+                self.console_url = console
+
+                with open('config.txt', 'w+') as f:
+                    f.write(env_file)
+
+            elif response.status_code == 409:
+                logging.info('Agent already paired with console.')
+                return False
+            else:
+                error = json.loads(response.content)['message']
+                logging.info('Failed to pair agent. %s' % error)
+                return False
+            time.sleep(5)
+            logging.info('Pairing complete')
+            return True
+        except Exception as error:
             logging.info('Failed to pair agent. %s' % error)
-            return False
-        logging.info('Pairing complete, restart agent to start work.')
-        return True

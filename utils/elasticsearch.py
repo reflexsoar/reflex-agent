@@ -1,10 +1,12 @@
 from elasticsearch import Elasticsearch
 from multiprocessing import Process
+from retry import retry
 import json
 import ssl
 import base64
 import chevron
 import logging
+import hashlib
 
 from .base import Event
 
@@ -21,6 +23,7 @@ class Elastic(Process):
         self.credentials = credentials
         self.field_mapping = field_mapping
         self.conn = self.build_es_connection()
+        self.plugin_type = 'events'
 
     
     def build_es_connection(self):
@@ -30,8 +33,7 @@ class Elastic(Process):
         '''
 
         if self.config['cafile'] != "":
-            # TODO: Make this work using base64 encoded certificate file
-            raise NotImplementedError
+            context = ssl.create_default_context(cafile=self.config['cafile'])
         else:
             context = ssl.create_default_context()
         context.check_hostname = self.config['check_hostname']
@@ -53,7 +55,14 @@ class Elastic(Process):
         else:
             es_config['http_auth'] = self.credentials
 
-        return Elasticsearch(self.config['hosts'], **es_config)
+        if 'distro' in self.config:
+            if self.config['distro'] == 'opensearch':
+                from opensearchpy import OpenSearch
+                return OpenSearch(self.config['hosts'], **es_config)
+            else:
+                return Elasticsearch(self.config['hosts'], **es_config)
+        else:
+            return Elasticsearch(self.config['hosts'], **es_config)
 
 
     def extract_observables(self, source):
@@ -64,16 +73,57 @@ class Elastic(Process):
         '''
         
         observables = []
-        for field in self.field_mapping:
+        for field in self.field_mapping['fields']:
+
+            if 'ioc' not in field:
+                field['ioc'] = False
+
+            if 'spotted' not in field:
+                field['spotted'] = False
+
+            if 'safe' not in field:
+                field['safe'] = False
+
             tags = []
             if 'tags' in field:
                 tags += field['tags']
 
             value = self.get_nested_field(source, field['field'])
+
+            source_field = field['field']
+            original_source_field = field['field']
+
+            # Set the source_field as the alias if one is defined
+            if 'alias' in field and field['alias']:
+                source_field = field['alias']
+
             if value:
+                # Create a new observable for each item in the list
                 if isinstance(value, list):
-                    value = ' '.join(value)
-                observables += [{"value":value, "dataType":field['dataType'], "tlp":field['tlp'], "tags":tags,}]
+                    for item in value:
+                        observables += [{
+                            "value":item,
+                            "data_type":field['data_type'],
+                            "tlp":field['tlp'],
+                            "ioc": field['ioc'],
+                            "safe": field['safe'],
+                            "spotted": field['spotted'],
+                            "tags":tags,
+                            "source_field": source_field,
+                            "original_source_field": original_source_field
+                        }]
+                else:
+                    observables += [{
+                        "value":value,
+                        "data_type":field['data_type'],
+                        "tlp":field['tlp'],
+                        "ioc": field['ioc'],
+                        "safe": field['safe'],
+                        "spotted": field['spotted'],
+                        "tags":tags,
+                        "source_field": source_field,
+                        "original_source_field": original_source_field
+                    }]
             else:
                 pass
         return observables
@@ -88,18 +138,47 @@ class Elastic(Process):
         events = []
         for record in hits:
             source = record['_source']
+            
+            # Clone the _id field of the elasticsearch/opensearch document into _source
+            if '_id' in record:
+                source['_id'] = record['_id']
+
             event = self.set_base_alert(source)
             observables = self.extract_observables(source)
             if observables:
                 event.observables = observables
 
+            # Add tags to an event based on an array of source fields e.g. signal.rule.tags
+            # tags from tag_fields will be added like 'event.code: 4624' where event.code is the
+            # source field and 4625 is the value of the field
+            if 'tag_fields' in self.config:
+                tags = []
+                for tag_field in self.config['tag_fields']:
+                    tags = self.get_nested_field(source, tag_field)
+                    if isinstance(tags, list):
+                        for tag in tags:
+                            if tag:
+                                event.tags += [f"{tag_field}: {tag}"]
+                    else:
+                        event.tags += [f"{tag_field}: {tags}"]
+
+            if 'static_tags' in self.config:
+                if isinstance(self.config['static_tags'], list):
+                    event.tags += self.config['static_tags']
+                else:
+                    event.tags += [self.config['static_tags']]
+
+            if 'signature_fields' in self.config:
+                event.generate_signature(source=source, fields=self.config['signature_fields'])
+
             # If this is an Elastic Detection/Signal, extract the 
             # detection tags
             if 'signal' in source:
                 event.tags += self.create_mitre_tags(source['signal']['rule']['threat'])
-                event.tags += source['signal']['rule']['tags']
+            #    event.tags += source['signal']['rule']['tags']
             
             # Remove duplicate tags
+            event.tags = [tag for tag in event.tags if tag not in ['',None,'-']]
             event.tags = list(set(event.tags))
 
             events.append(event)
@@ -107,6 +186,7 @@ class Elastic(Process):
         return events
 
 
+    @retry(delay=30, tries=10)
     def poll(self):
         '''
         Polls an Elasticsearch index using a scroll window
@@ -116,7 +196,19 @@ class Elastic(Process):
         events = []
 
         try:
-            body = {"query": {"range": {"@timestamp": {"gt": "now-{}".format(self.config['search_period'])}}}, "size":self.config['search_size']}
+            if 'lucene_filter' in self.config:
+                body = {
+                        "query": {
+                            "bool": { 
+                                "must": [
+                                        {"query_string": { "query": self.config['lucene_filter'] }},
+                                        {"range": {"@timestamp": {"gt": "now-{}".format(self.config['search_period'])}}}
+                                    ]
+                                }
+                        },
+                        "size": self.config['search_size']}
+            else:
+                body = {"query": {"range": {"@timestamp": {"gt": "now-{}".format(self.config['search_period'])}}}, "size":self.config['search_size']}
             res = self.conn.search(index=str(self.config['index']), body=body, scroll='2m') # TODO: Move scroll time to config
 
             scroll_id = res['_scroll_id']
@@ -141,7 +233,6 @@ class Elastic(Process):
         except Exception as e:
             logging.error("Failed to run search, make sure the Elasticsearch cluster is reachable. {}".format(e))
             return []
-
         
     def run(self):
         '''
@@ -167,7 +258,6 @@ class Elastic(Process):
         self.status = 'stopped'
         self.kill_received = True
 
-
     def get_nested_field(self, message, field):
         '''
         Iterates over nested fields to get the final desired value
@@ -175,6 +265,11 @@ class Elastic(Process):
         '''
 
         if isinstance(field, str):
+
+            # If the field exists as a flat field with .'s in it return the field
+            if field in message:
+                return message[field]
+                
             args = field.split('.')
         else:
             args = field
@@ -223,16 +318,16 @@ class Elastic(Process):
         '''
 
         severities = {
-            'low': 0,
-            'medium': 1,
-            'high': 2,
-            'critical': 3
+            'low': 1,
+            'medium': 2,
+            'high': 3,
+            'critical': 4
         }
         s = s.lower()
 
         if s in severities:
             return severities[s]
-        return 0
+        return 1
 
 
     def set_base_alert(self, source):
@@ -262,8 +357,11 @@ class Elastic(Process):
             event.source = str(self.config['index']).replace('-*','')
         
         # Get the reference field, this should be unique per event
-
         event.reference = self.get_nested_field(source, self.config['source_reference'])
+
+        # Find the original event date if supplied
+        if 'original_date_field' in self.config:
+            event.original_date = self.get_nested_field(source, self.config['original_date_field']).replace('Z','')
 
         # Get the event severity field
         # if none is defined, default to Low

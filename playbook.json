@@ -13,7 +13,7 @@
                     "order": 1,
                     "name": "Check if item is a host",
                     "type": "if",
-                    "source": "dataType",
+                    "source": "data_type",
                     "condition": "eq",
                     "target_value": "host",
                     "if_true": [{
