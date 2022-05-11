@@ -32,37 +32,40 @@ class Elastic(Process):
         be used to query Elasticsearch
         '''
 
+        # Create an empty configuration object
+        es_config = {            
+        }
+
+        # If we are defining a ca_file use ssl_contexts with the ca_file
+        # else disable ca_certs and verify_certs and don't use ssl_context
         if self.config['cafile'] != "":
+
             context = ssl.create_default_context(cafile=self.config['cafile'])
+            CONTEXT_VERIFY_MODES = {
+                "none": ssl.CERT_NONE,
+                "optional": ssl.CERT_OPTIONAL,
+                "required": ssl.CERT_REQUIRED
+            }
+        
+            context.verify_mode = CONTEXT_VERIFY_MODES[self.config['cert_verification']]
+            context.check_hostname = self.config['check_hostname']
+            es_config['ssl_context'] = context        
         else:
-            context = ssl.create_default_context()
-        context.check_hostname = self.config['check_hostname']
+            es_config['ca_certs'] = False
+            es_config['verify_certs'] = False
+            #es_config['ssl_assert_hostname'] = self.config['check_hostname']        
 
-        CONTEXT_VERIFY_MODES = {
-            "none": ssl.CERT_NONE,
-            "optional": ssl.CERT_OPTIONAL,
-            "required": ssl.CERT_REQUIRED
-        }
-        context.verify_mode = CONTEXT_VERIFY_MODES[self.config['cert_verification']]
-
-        es_config = {
-
-            # No longer required see
-            # https://github.com/elastic/elasticsearch-py/blob/939e4e5f5f039ba4d6e87f0c47517a9446907f66/docs/guide/migration.asciidoc#strict-client-configuration
-            # 'scheme': self.config['scheme']
-
-            'ssl_context': context
-        }
-
+        # Set the API Authentication method
         if self.config['auth_method'] == 'api_key':
             es_config['api_key'] = self.credentials
         else:
             es_config['http_auth'] = self.credentials
 
+        # Swap distros depending on the inputs configuration
         if 'distro' in self.config:
             if self.config['distro'] == 'opensearch':
                 from opensearchpy import OpenSearch
-                #es_config['scheme'] =  self.config['scheme']
+                
                 return OpenSearch(self.config['hosts'], **es_config)
             else:
                 return Elasticsearch(self.config['hosts'], **es_config)
