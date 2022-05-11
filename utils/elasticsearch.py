@@ -46,7 +46,11 @@ class Elastic(Process):
         context.verify_mode = CONTEXT_VERIFY_MODES[self.config['cert_verification']]
 
         es_config = {
-            'scheme': self.config['scheme'],
+
+            # No longer required see
+            # https://github.com/elastic/elasticsearch-py/blob/939e4e5f5f039ba4d6e87f0c47517a9446907f66/docs/guide/migration.asciidoc#strict-client-configuration
+            # 'scheme': self.config['scheme']
+
             'ssl_context': context
         }
 
@@ -58,6 +62,7 @@ class Elastic(Process):
         if 'distro' in self.config:
             if self.config['distro'] == 'opensearch':
                 from opensearchpy import OpenSearch
+                #es_config['scheme'] =  self.config['scheme']
                 return OpenSearch(self.config['hosts'], **es_config)
             else:
                 return Elasticsearch(self.config['hosts'], **es_config)
