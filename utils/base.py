@@ -14,7 +14,7 @@ from requests import Session, Request
 from pluginbase import PluginBase
 from multiprocessing import Process, Queue
 
-logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
 here = os.path.abspath(os.path.dirname(__file__))
 get_path = partial(os.path.join, here)
@@ -201,6 +201,13 @@ class Agent(object):
         self.cache_key = 'signature'
         self.cache_ttl = 30 # Number of minutes an item should be in the cache
 
+        # Set a role health state, 0 = disabled, 1 = degraded, 2 = healthy
+        self.role_health = {
+            'detector': 0,
+            'runner': 0,
+            'poller': 0
+        }
+
     def agent_ip(self):
         '''
         Fetches the IP address of the machine
@@ -351,6 +358,11 @@ class Agent(object):
         Pings the API to update the last_heartbeat timestamp of 
         the agent
         '''
+
+        if any([self.role_health[role] == 1 for role in self.role_health]):
+            logging.error('Agent is unhealthy, one or more roles are degraded')
+        else:
+            logging.info('Agent is healthy')
 
         response = self.call_mgmt_api('agent/heartbeat/{}'.format(self.uuid))
         if response and response.status_code == 200:
@@ -520,8 +532,6 @@ class Agent(object):
         if not self.options.roles:
             errors.append('Missing argument --roles')
 
-        
-
         roles = self.options.roles.split(',')
         token = self.options.token
         console = self.options.console
@@ -529,7 +539,7 @@ class Agent(object):
         # Determine if the roles supplied in the CLI pair command
         # are valid roles supported by the tool
         for role in roles:
-            if role not in ('poller', 'runner'):
+            if role not in ('poller', 'runner', 'detector'):
                 errors.append(f'Invalid role "{role}"')
 
         # If there are any errors, return them to STDOUT

@@ -11,9 +11,10 @@ from multiprocessing import Process, Queue
 from utils.elasticsearch import Elastic
 from dotenv import load_dotenv
 from utils.ldap import LDAPSource
+from module import Detector, detector
 
 
-logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 if __name__ == "__main__":
@@ -70,6 +71,8 @@ if __name__ == "__main__":
     #agent.download_plugins()    
     #logging.info('Running test plugin!')
     #plugin = Plugin('utilities')
+
+    detector_process = None
    
     while True:
 
@@ -79,47 +82,84 @@ if __name__ == "__main__":
         logging.info('Running agent')
 
         if agent.config:
-            for i in agent.config['inputs']:
 
-                credentials = ()
+            if 'poller' in agent.config['roles']:
+                for i in agent.config['inputs']:
 
-                headers = {
-                    'Authorization': 'Bearer {}'.format(os.getenv('ACCESS_TOKEN')),
-                    'Content-Type': 'application/json'
-                }
+                    credentials = ()
 
-                logging.info('Running input %s' % (i['name']))
-
-                # Fetch the credentials for the input
-                if 'credential' in i:
-                    credentials = agent.fetch_credentials(i['credential'])
-
-                if i['plugin'] == "Elasticsearch":
-
-                    e = Elastic(i['config'], i['field_mapping'], credentials)
-                    events = e.run()
-
-                    agent.process_events(events)
-
-                if i['plugin'] == "MSExchange":
-                    logging.error('MSExchange plugin not implemented yet.')
-                    #e = MSExchange(i['config'], i['field_mapping'], credentials)
-                    #events = e.poll_mailbox()
-
-                if i['plugin'] == "LDAP":
-                    logging.error('LDAP plugin not implemented yet.')
-
-                    l = LDAPSource(i['config'], credentials)
-                    items = l.query()
-
-                    """
-                    threat_list_config = {
-                        'threat_list_uuid': 'xxxx-xxxx-xxxx-xxxx-xxxx',
-                        'action': 'append|replace'
+                    headers = {
+                        'Authorization': 'Bearer {}'.format(os.getenv('ACCESS_TOKEN')),
+                        'Content-Type': 'application/json'
                     }
-                    """
 
-                    agent.push_intel(items, i['threat_list_config'])
+                    logging.info('Running input %s' % (i['name']))
+
+                    # Fetch the credentials for the input
+                    if 'credential' in i:
+                        credentials = agent.fetch_credentials(i['credential'])
+
+                    if i['plugin'] == "Elasticsearch":
+
+                        e = Elastic(i['config'], i['field_mapping'], credentials)
+                        events = e.run()
+
+                        agent.process_events(events)
+
+                    if i['plugin'] == "MSExchange":
+                        logging.error('MSExchange plugin not implemented yet.')
+                        #e = MSExchange(i['config'], i['field_mapping'], credentials)
+                        #events = e.poll_mailbox()
+
+                    if i['plugin'] == "LDAP":
+                        logging.error('LDAP plugin not implemented yet.')
+
+                        l = LDAPSource(i['config'], credentials)
+                        items = l.query()
+
+                        """
+                        threat_list_config = {
+                            'threat_list_uuid': 'xxxx-xxxx-xxxx-xxxx-xxxx',
+                            'action': 'append|replace'
+                        }
+                        """
+
+                        agent.push_intel(items, i['threat_list_config'])
+
+            # If the agent should be a detector and the detector process is not started
+            # start it up
+            if 'detector' in agent.config['roles'] and not detector_process:
+
+                # Start the detector role process
+                logging.info("Agent is a detector, spawning detector role")
+                detector_process = Detector({})
+                detector_process.start()
+
+                # Set the detector role to healthy
+                agent.role_health['detector'] = 2
+
+            # If the agent should be a detector and the detector process was previously started
+            # check its health and attempt to restart it if it has crashed out
+            elif 'detector' in agent.config['roles'] and detector_process:
+                logging.info("Checking detector module status")
+                if not detector_process.is_alive():
+                    
+                    # Start the detector role process
+                    logging.error('Detector module is dead, restarting detector role')
+                    detector_process = Detector({})
+                    detector_process.start()
+
+                    # Set the detector role to degraded
+                    agent.role_health['detector'] = 1
+                else:
+                    # Set the detector role to healthy
+                    agent.role_health['detector'] = 2
+                
+            # If the agent is no longer a detector, kill the detector role
+            elif not 'detector' in agent.config['roles'] and detector_process:
+                detector_process.close()
+                agent.role_health['detector'] = 0
+                detector_process = None
 
         logging.info('Agent sleeping for {} seconds'.format(30))
-        time.sleep(30)
+        time.sleep(5)
