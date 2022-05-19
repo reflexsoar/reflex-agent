@@ -29,6 +29,13 @@ class Detector(Process):
         self.logger.addHandler(log_handler)
         self.logger.setLevel(log_levels[log_level])
         self.log_level = log_level
+        self.graceful_shutdown = self.config['graceful_shutdown']
+
+    def shutdown(self):
+        """
+        Shuts down the detector process, if graceful_shutdown 
+        """
+        raise NotImplementedError
 
     def run(self):
         """
