@@ -83,6 +83,42 @@ if __name__ == "__main__":
 
         if agent.config:
 
+            # If the agent should be a detector and the detector process is not started
+            # start it up
+            if 'detector' in agent.config['roles'] and not detector_process:
+
+                # Start the detector role process
+                logging.info("Agent is a detector, spawning detector role")
+                detector_process = Detector({}, agent=agent)
+                detector_process.start()
+
+                # Set the detector role to healthy
+                agent.role_health['detector'] = 2
+
+            # If the agent should be a detector and the detector process was previously started
+            # check its health and attempt to restart it if it has crashed out
+            elif 'detector' in agent.config['roles'] and detector_process:
+                logging.info("Checking detector module status")
+                if not detector_process.is_alive():
+                    
+                    # Start the detector role process
+                    logging.error('Detector module is dead, restarting detector role')
+                    detector_process = Detector({}, agent=agent)
+                    detector_process.start()
+
+                    # Set the detector role to degraded
+                    agent.role_health['detector'] = 1
+                else:
+                    # Set the detector role to healthy
+                    agent.role_health['detector'] = 2
+                
+            # If the agent is no longer a detector, kill the detector role
+            elif not 'detector' in agent.config['roles'] and detector_process:
+                detector_process.close()
+                agent.role_health['detector'] = 0
+                detector_process = None
+
+
             if 'poller' in agent.config['roles']:
                 for i in agent.config['inputs']:
 
@@ -126,40 +162,6 @@ if __name__ == "__main__":
 
                         agent.push_intel(items, i['threat_list_config'])
 
-            # If the agent should be a detector and the detector process is not started
-            # start it up
-            if 'detector' in agent.config['roles'] and not detector_process:
-
-                # Start the detector role process
-                logging.info("Agent is a detector, spawning detector role")
-                detector_process = Detector({})
-                detector_process.start()
-
-                # Set the detector role to healthy
-                agent.role_health['detector'] = 2
-
-            # If the agent should be a detector and the detector process was previously started
-            # check its health and attempt to restart it if it has crashed out
-            elif 'detector' in agent.config['roles'] and detector_process:
-                logging.info("Checking detector module status")
-                if not detector_process.is_alive():
-                    
-                    # Start the detector role process
-                    logging.error('Detector module is dead, restarting detector role')
-                    detector_process = Detector({})
-                    detector_process.start()
-
-                    # Set the detector role to degraded
-                    agent.role_health['detector'] = 1
-                else:
-                    # Set the detector role to healthy
-                    agent.role_health['detector'] = 2
-                
-            # If the agent is no longer a detector, kill the detector role
-            elif not 'detector' in agent.config['roles'] and detector_process:
-                detector_process.close()
-                agent.role_health['detector'] = 0
-                detector_process = None
 
         logging.info('Agent sleeping for {} seconds'.format(30))
         time.sleep(5)

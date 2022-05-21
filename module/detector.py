@@ -9,7 +9,7 @@ class Detector(Process):
     Detection rules that return matches are sent to the API as Events
     '''
 
-    def __init__(self, config, log_level='INFO', *args, **kwargs):
+    def __init__(self, config, agent=None, log_level='INFO', *args, **kwargs):
 
         super(Detector, self).__init__(*args, **kwargs)
         self.config = config
@@ -29,7 +29,21 @@ class Detector(Process):
         self.logger.addHandler(log_handler)
         self.logger.setLevel(log_levels[log_level])
         self.log_level = log_level
-        self.graceful_shutdown = self.config['graceful_shutdown']
+        self.agent = agent
+        #self.graceful_shutdown = self.config['graceful_shutdown']
+
+
+    def load_detections(self, active=True):
+        '''
+        Polls the API to find all detection work that should be assigned to this agent
+        '''
+
+        response = self.agent.call_mgmt_api(f"detection?agent={self.agent.uuid}&active={active}")
+        print(response.json())
+        if response and response.status_code == 200:
+            self.detection_rules = response.json()
+            print(self.detection_rules)
+
 
     def shutdown(self):
         """
@@ -37,11 +51,13 @@ class Detector(Process):
         """
         raise NotImplementedError
 
+
     def run(self):
         """
         Periodically runs detection rules as defined by the ReflexSOAR API
         """
         while self.running:
             self.logger.info('Fetching detections')
+            self.load_detections()
             self.logger.info('Run complete, sleeping')
             time.sleep(5)

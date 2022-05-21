@@ -200,6 +200,7 @@ class Agent(object):
         self.event_cache = {}
         self.cache_key = 'signature'
         self.cache_ttl = 30 # Number of minutes an item should be in the cache
+        self.detection_rules = []
 
         # Set a role health state, 0 = disabled, 1 = degraded, 2 = healthy
         self.role_health = {
@@ -404,6 +405,17 @@ class Agent(object):
             #response = self.call_mgmt_api('agent/heartbeat/{}'.format(self.uuid))
 
 
+    def load_detections(self):
+        '''
+        Polls the API to find all detection work that should be assigned to this agent
+        '''
+
+        response = self.call_mgmt_api(f"detection?agent={self.uuid}&active=true")
+        if response and response.status_code == 200:
+            self.detection_rules = response.json()
+            print(self.detection_rules)
+            
+
     def process_events(self, events):
         ''' 
         Splits all the events into multiple pusher processes based on the size
@@ -434,6 +446,7 @@ class Agent(object):
             
             [x.start() for x in workers]
             [x.join() for x in workers]
+
 
     def push_events(self, queue):
         '''
