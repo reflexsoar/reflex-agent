@@ -322,6 +322,16 @@ class Agent(object):
 
             return
 
+    def get_input(self, uuid):
+        '''
+        Fetches an inputs configuration from the API
+        '''
+        response = self.call_mgmt_api(f"input/{uuid}")
+        if response and response.status_code == 200:
+            _input = response.json()
+            return _input
+
+
     def download_plugins(self):
         '''
         Downloads plugins from the API so they can be 
@@ -404,17 +414,6 @@ class Agent(object):
             # Call /api/v2.0/
             #response = self.call_mgmt_api('agent/heartbeat/{}'.format(self.uuid))
 
-
-    def load_detections(self):
-        '''
-        Polls the API to find all detection work that should be assigned to this agent
-        '''
-
-        response = self.call_mgmt_api(f"detection?agent={self.uuid}&active=true")
-        if response and response.status_code == 200:
-            self.detection_rules = response.json()
-            print(self.detection_rules)
-            
 
     def process_events(self, events):
         ''' 

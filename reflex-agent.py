@@ -164,4 +164,4 @@ if __name__ == "__main__":
 
 
         logging.info('Agent sleeping for {} seconds'.format(30))
-        time.sleep(5)
+        time.sleep(30)
