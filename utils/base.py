@@ -182,13 +182,28 @@ class Plugin(object):
 
 class Agent(object):
 
-    def __init__(self, options):
+    def __init__(self, options, log_level="ERROR"):
         ''' A new agent object '''
 
         self.uuid = os.getenv('AGENT_UUID')
         self.access_token = os.getenv('ACCESS_TOKEN')
         self.console_url = os.getenv('CONSOLE_URL')
         self.ip = self.agent_ip()
+
+        log_levels = {
+            'DEBUG': logging.DEBUG,
+            'ERROR': logging.ERROR,
+            'INFO': logging.INFO
+        }
+
+        log_handler = logging.StreamHandler()
+        log_handler.setFormatter(logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger.addHandler(log_handler)
+        self.logger.setLevel(log_levels[log_level])
+        self.log_level = log_level
 
         if not options.name:
             self.hostname = socket.gethostname()
@@ -273,7 +288,7 @@ class Agent(object):
 
             return resp
         except Exception as e:
-            logging.error("An error occured while trying to connect to the management API. {}".format(str(e)))
+            self.logger.error("An error occured while trying to connect to the management API. {}".format(str(e)))
             return None
 
 
@@ -284,7 +299,7 @@ class Agent(object):
 
         username = ""
         secret = ""
-        logging.info('Fetching credentials')
+        self.logger.info('Fetching credentials')
 
         # Fetch the username
         response = self.call_mgmt_api('credential/%s' % uuid)
@@ -292,7 +307,7 @@ class Agent(object):
             username = response.json()['username']
         else:
             if response:
-                logging.error('Failed to get credentials from management API. {}'.format(response.content))
+                self.logger.error('Failed to get credentials from management API. {}'.format(response.content))
 
         # Fetch the secret
         response = self.call_mgmt_api('credential/decrypt/%s' % uuid)
@@ -300,7 +315,7 @@ class Agent(object):
             secret = response.json()['secret']
         else:
             if response:
-                logging.error('Failed to get credentials from management API. {}'.format(response.content))
+                self.logger.error('Failed to get credentials from management API. {}'.format(response.content))
         
         return (username, secret)
 
@@ -339,7 +354,8 @@ class Agent(object):
         '''
         payload = json.loads(json.dumps(payload, default=str))
         response = self.call_mgmt_api(f"detection/{uuid}", data=payload, method='PUT')
-        print(response)
+        if response and response.status_code != 200:
+            self.logger.error(f"Failed to update detection {uuid}. API response code {response.status_code}, {response.text}")
 
 
     def download_plugins(self):
@@ -357,7 +373,7 @@ class Agent(object):
             hasher = hashlib.sha1()
             response = self.call_mgmt_api(
                 'plugin/download/%s' % plugin['filename'])
-            logging.info(f"Downloading {plugin['name']} plugin...")
+            self.logger.info(f"Downloading {plugin['name']} plugin...")
             if response and response.status_code == 200:
 
                 # Compute the hash of the file that was just downloaded
@@ -365,13 +381,13 @@ class Agent(object):
                 checksum = hasher.hexdigest()
                 if plugin['file_hash'] == checksum:
                     with ZipFile(io.BytesIO(response.content)) as z:
-                        logging.info(f"Extracting ZIP file {plugin['filename']}")
+                        self.logger.info(f"Extracting ZIP file {plugin['filename']}")
                         for item in z.infolist():
                             if item.filename.endswith(".py"):
                                 item.filename = os.path.basename(item.filename)
                                 z.extract(item, './plugins')
                 else:
-                    logging.error("Plugin %s failed signature checking and will not be downloaded.  Expected %s, got %s" % (
+                    self.logger.error("Plugin %s failed signature checking and will not be downloaded.  Expected %s, got %s" % (
                         plugin['name'], plugin['file_hash'], checksum))
 
     def heartbeat(self):
@@ -381,9 +397,9 @@ class Agent(object):
         '''
 
         if any([self.role_health[role] == 1 for role in self.role_health]):
-            logging.error('Agent is unhealthy, one or more roles are degraded')
+            self.logger.error('Agent is unhealthy, one or more roles are degraded')
         else:
-            logging.info('Agent is healthy')
+            self.logger.info('Agent is healthy')
 
         response = self.call_mgmt_api('agent/heartbeat/{}'.format(self.uuid))
         if response and response.status_code == 200:
@@ -478,14 +494,14 @@ class Agent(object):
 
                 if len(events) > 0:
                     # TODO: FIX LOGGING
-                    logging.info('Pushing %s events to bulk ingest...' % len(events))
+                    self.logger.info('Pushing %s events to bulk ingest...' % len(events))
                 
                     response = self.call_mgmt_api('event/_bulk', data=payload, method='POST')
                     if response and response.status_code == 207:
-                        logging.info('Finishing pushing events in {} seconds'.format(response.json()['process_time']))
+                        self.logger.info('Finishing pushing events in {} seconds'.format(response.json()['process_time']))
                         
         except Exception as e:
-            logging.error('An error occurred while trying to push events to the _bulk API. {}'.format(str(e)))
+            self.logger.error('An error occurred while trying to push events to the _bulk API. {}'.format(str(e)))
 
 
     def check_cache(self, events: list, ttl: int, cache_key: str = "signature") -> list:
@@ -567,7 +583,7 @@ class Agent(object):
         # If there are any errors, return them to STDOUT
         # and exit the agent
         if len(errors) > 0:
-            logging.info('\n'.join(errors))
+            self.logger.info('\n'.join(errors))
             exit(1)
 
         agent_data = {
@@ -610,14 +626,14 @@ AGENT_UUID='{}'""".format(console, data['token'], data['uuid'])
                     f.write(env_file)
 
             elif response.status_code == 409:
-                logging.info('Agent already paired with console.')
+                self.logger.info('Agent already paired with console.')
                 return False
             else:
                 error = json.loads(response.content)['message']
-                logging.info('Failed to pair agent. %s' % error)
+                self.logger.info('Failed to pair agent. %s' % error)
                 return False
             time.sleep(5)
-            logging.info('Pairing complete')
+            self.logger.info('Pairing complete')
             return True
         except Exception as error:
-            logging.info('Failed to pair agent. %s' % error)
+            self.logger.info('Failed to pair agent. %s' % error)

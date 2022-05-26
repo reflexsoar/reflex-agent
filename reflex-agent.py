@@ -119,7 +119,7 @@ if __name__ == "__main__":
                 detector_process = None
 
 
-            if 'poller' in agent.config['roles']:
+            if 'poller2' in agent.config['roles']:
                 for i in agent.config['inputs']:
 
                     credentials = ()

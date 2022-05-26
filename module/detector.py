@@ -54,7 +54,7 @@ class Detection(JSONSerializable):
                 # TODO: Convert 60*24 to a detector configuration item
                 if minutes_since > catchup_period:
                     self.lookbehind = math.ceil(self.lookbehind+catchup_period)
-                else:
+                elif minutes_since > self.lookbehind:
                     self.lookbehind = math.ceil(self.lookbehind+minutes_since)
 
                 return True
@@ -195,11 +195,8 @@ class Detector(Process):
                                 ]
                             }
                         },
-                        "size": 10000
+                        "size": _input['config']['search_size']
                     }
-
-                    import json
-                    print(json.dumps(query, indent=2))
 
                     if len(detection.exceptions) > 0:
                         query["query"]["bool"]["must_not"] = []
@@ -213,8 +210,11 @@ class Detector(Process):
                                 }
                             )
 
+                    import json
+                    print(json.dumps(query, indent=2))
+
                     detection.last_run = datetime.datetime.utcnow().isoformat()
-                    res = elastic.conn.search(index="winlogbeat-*", body=query, scroll='2m')
+                    res = elastic.conn.search(index=_input['config']['index'], body=query, scroll='2m')
 
                     scroll_id = res['_scroll_id']
                     if 'total' in res['hits']:
