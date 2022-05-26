@@ -1,3 +1,4 @@
+import math
 import time
 import logging
 import datetime
@@ -52,7 +53,9 @@ class Detection(JSONSerializable):
                 # If minutes since is greater than 24 hours don't go beyond that
                 # TODO: Convert 60*24 to a detector configuration item
                 if minutes_since > catchup_period:
-                    self.lookbehind = self.lookbehind+minutes_since
+                    self.lookbehind = math.ceil(self.lookbehind+catchup_period)
+                else:
+                    self.lookbehind = math.ceil(self.lookbehind+minutes_since)
 
                 return True
         else:
@@ -120,7 +123,6 @@ class Detector(Process):
             for source in rule['source']:
                 if source['source'] not in input_uuids:
                     input_uuids.append(source['source'])
-
         
         # Get the configuration for each input
         for input_uuid in input_uuids:
@@ -137,6 +139,13 @@ class Detector(Process):
     def shutdown(self):
         """
         Shuts down the detector process, if graceful_shutdown 
+        """
+        raise NotImplementedError
+
+
+    def match_rule(self, detection):
+        """
+        Runs a match rule (rule_type: 0) against the log source
         """
         raise NotImplementedError
 
@@ -179,19 +188,37 @@ class Detector(Process):
                     # TODO: Support for multiple queries
                     query = {
                         "query": {
-                            "query_string": {
-                                "query": detection.query[0]['query'],
-                                "default_field": "message"
+                            "bool": { 
+                                "must": [
+                                    {"query_string": { "query": detection.query[0]['query'] }},
+                                    {"range": {"@timestamp": {"gt": "now-{}m".format(detection.lookbehind)}}}
+                                ]
                             }
                         },
                         "size": 10000
                     }
 
+                    import json
+                    print(json.dumps(query, indent=2))
+
+                    if len(detection.exceptions) > 0:
+                        query["query"]["bool"]["must_not"] = []
+                        for exception in detection.exceptions:
+                        
+                            query["query"]["bool"]["must_not"].append(
+                                {
+                                    "query_string": {
+                                        "query": exception["query"]
+                                    }
+                                }
+                            )
+
+                    detection.last_run = datetime.datetime.utcnow().isoformat()
                     res = elastic.conn.search(index="winlogbeat-*", body=query, scroll='2m')
 
                     scroll_id = res['_scroll_id']
                     if 'total' in res['hits']:
-                        logging.info(f"{detection.uuid} - Found {len(res['hits']['hits'])} detection hits.")
+                        self.logger.info(f"{detection.name} ({detection.uuid}) - Found {len(res['hits']['hits'])} detection hits.")
                         scroll_size = res['hits']['total']['value']
 
                         # TODO: PARSE THESE
@@ -203,16 +230,36 @@ class Detector(Process):
                         
                     # Scroll
                     while (scroll_size > 0):
-                        logging.info(f"{detection.uuid} - Scrolling Elasticsearch results...")
+                        self.logger.info(f"{detection.name} ({detection.uuid}) - Scrolling Elasticsearch results...")
                         res = elastic.conn.scroll(scroll_id = scroll_id, scroll = '2m') # TODO: Move scroll time to config
-                        logging.info(f"{detection.uuid} - Found {len(res['hits']['hits'])} detection hits.")
+                        if len(res['hits']['hits']) > 0:
+                            self.logger.info(f"{detection.name} ({detection.uuid}) - Found {len(res['hits']['hits'])} detection hits.")
 
-                        # TODO: PARSE THESE
-                        docs += res['hits']['hits']
+                            # TODO: PARSE THESE
+                            docs += res['hits']['hits']
                         #events += self.parse_events(res['hits']['hits'])
                         scroll_size = len(res['hits']['hits'])
 
-                    print(f"{detection.uuid} - Total Hits {len(docs)}")
+                    self.logger.info(f"{detection.name} ({detection.uuid}) - Total Hits {len(docs)}")
+
+                    if hasattr(detection, 'total_hits'):
+                        detection.total_hits += len(docs)
+                    else:
+                        detection.total_hits = len(docs)
+
+                    update_payload = {
+                        'last_run': detection.last_run,
+                        'total_hits': detection.total_hits
+                    }
+
+                    if detection.total_hits > 0:
+                        update_payload['last_hit'] = datetime.datetime.utcnow().isoformat()
+
+                    # Update the detection with the meta information from this run
+                    self.agent.update_detection(detection.uuid, payload=update_payload)
+
+                    # Close the connection to Elasticsearch
+                    elastic.conn.transport.close()
                     
                     
         except Exception as e:

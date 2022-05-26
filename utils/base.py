@@ -225,6 +225,7 @@ class Agent(object):
             s.close()
         return IP
 
+
     @retry(delay=30)
     def call_mgmt_api(self, endpoint, data=None, method='GET', token=None):
         '''
@@ -330,6 +331,15 @@ class Agent(object):
         if response and response.status_code == 200:
             _input = response.json()
             return _input
+
+
+    def update_detection(self, uuid, payload={}):
+        '''
+        Updated a detection via PUT request to the API
+        '''
+        payload = json.loads(json.dumps(payload, default=str))
+        response = self.call_mgmt_api(f"detection/{uuid}", data=payload, method='PUT')
+        print(response)
 
 
     def download_plugins(self):

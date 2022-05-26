@@ -232,8 +232,9 @@ class Elastic(Process):
             while (scroll_size > 0):
                 logging.info("Scrolling Elasticsearch results...")
                 res = self.conn.scroll(scroll_id = scroll_id, scroll = '2m') # TODO: Move scroll time to config
-                logging.info(f"Found {len(res['hits']['hits'])} alerts.")
-                events += self.parse_events(res['hits']['hits'])
+                if len(res['hits']['hits']) > 0:
+                    logging.info(f"Found {len(res['hits']['hits'])} alerts.")
+                    events += self.parse_events(res['hits']['hits'])
                 scroll_size = len(res['hits']['hits'])
 
             return events
