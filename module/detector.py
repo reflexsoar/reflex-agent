@@ -239,20 +239,21 @@ class Detector(Process):
 
                     self.logger.info(f"{detection.name} ({detection.uuid}) - Total Hits {len(docs)}")
 
-                    if hasattr(detection, 'total_hits'):
-                        detection.total_hits += len(docs)
-                    else:
-                        detection.total_hits = len(docs)
-
+                    
                     update_payload = {
                         'last_run': detection.last_run,
-                        'total_hits': detection.total_hits
                     }
+                    
+                    if hasattr(detection, 'total_hits'):
+                        update_payload['total_hits'] = detection.total_hits + len(docs)
+                    else:
+                        update_payload['total_hits'] = len(docs)                    
 
                     if detection.total_hits > 0:
                         update_payload['last_hit'] = datetime.datetime.utcnow().isoformat()
 
                     # Update the detection with the meta information from this run
+                    print(update_payload)
                     self.agent.update_detection(detection.uuid, payload=update_payload)
                     
                     # Update all the docs to have detection rule hard values
