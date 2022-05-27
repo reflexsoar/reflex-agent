@@ -253,7 +253,6 @@ class Detector(Process):
                         update_payload['last_hit'] = datetime.datetime.utcnow().isoformat()
 
                     # Update the detection with the meta information from this run
-                    print(update_payload)
                     self.agent.update_detection(detection.uuid, payload=update_payload)
                     
                     # Update all the docs to have detection rule hard values
