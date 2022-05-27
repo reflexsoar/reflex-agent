@@ -271,8 +271,6 @@ class Detector(Process):
                     update_payload['time_taken'] = total_execution_time
                     update_payload['query_time_taken'] = query_time
 
-                    print(update_payload)
-
                     # Update the detection with the meta information from this run
                     self.agent.update_detection(detection.uuid, payload=update_payload)
                     
