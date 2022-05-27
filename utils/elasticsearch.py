@@ -1,3 +1,4 @@
+import copy
 from elasticsearch import Elasticsearch
 from multiprocessing import Process
 from retry import retry
@@ -137,7 +138,7 @@ class Elastic(Process):
         return observables
 
 
-    def parse_events(self, hits):
+    def parse_events(self, hits, title=None, signature_values=[]):
         '''
         Parses events pulled from Elasticsearch and formats them 
         into a JSON array that fits the expected input of the REST API
@@ -145,13 +146,16 @@ class Elastic(Process):
 
         events = []
         for record in hits:
+
+            _sig_values = copy.copy(signature_values)
+            
             source = record['_source']
             
             # Clone the _id field of the elasticsearch/opensearch document into _source
             if '_id' in record:
                 source['_id'] = record['_id']
 
-            event = self.set_base_alert(source)
+            event = self.set_base_alert(source, title=title)
             observables = self.extract_observables(source)
             if observables:
                 event.observables = observables
@@ -163,12 +167,13 @@ class Elastic(Process):
                 tags = []
                 for tag_field in self.config['tag_fields']:
                     tags = self.get_nested_field(source, tag_field)
-                    if isinstance(tags, list):
-                        for tag in tags:
-                            if tag:
-                                event.tags += [f"{tag_field}: {tag}"]
-                    else:
-                        event.tags += [f"{tag_field}: {tags}"]
+                    if tags:
+                        if isinstance(tags, list):
+                            for tag in tags:
+                                if tag:
+                                    event.tags += [f"{tag_field}: {tag}"]
+                        else:
+                            event.tags += [f"{tag_field}: {tags}"]
 
             if 'static_tags' in self.config:
                 if isinstance(self.config['static_tags'], list):
@@ -177,7 +182,9 @@ class Elastic(Process):
                     event.tags += [self.config['static_tags']]
 
             if 'signature_fields' in self.config:
-                event.generate_signature(source=source, fields=self.config['signature_fields'])
+                event.generate_signature(source=source, fields=self.config['signature_fields'], signature_values=_sig_values)
+            else:
+                event.generate_signature(source=source, signature_values=_sig_values)
 
             # If this is an Elastic Detection/Signal, extract the 
             # detection tags
@@ -339,7 +346,7 @@ class Elastic(Process):
         return 1
 
 
-    def set_base_alert(self, source):
+    def set_base_alert(self, source, title=None):
         '''
         Sets the base information of the event by pulling
         fields defined in the Elastic input config
@@ -347,8 +354,12 @@ class Elastic(Process):
 
         event = Event()
 
-        # Pull the event title
-        event.title = self.get_nested_field(source, self.config['rule_name'])
+        # Pull the event title unless overridden
+        if not title:
+            event.title = self.get_nested_field(source, self.config['rule_name'])
+        else:
+            event.title = title
+        
         if 'description_field' in self.config:
             event.description = self.get_nested_field(source, self.config['description_field'])
         else:

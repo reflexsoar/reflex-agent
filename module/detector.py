@@ -182,9 +182,9 @@ class Detector(Process):
 
                     docs = []
 
-                    elastic = Elastic(_input['config'],{},credential)
+                    # Create a connection to Elasticsearch
+                    elastic = Elastic(_input['config'], _input['field_mapping'], credential)
 
-                    # TODO: Create a query generator that inserts any configured exclusions
                     # TODO: Support for multiple queries
                     query = {
                         "query": {
@@ -198,6 +198,7 @@ class Detector(Process):
                         "size": _input['config']['search_size']
                     }
 
+                    # If there are exclusions/exceptions add them to the query
                     if len(detection.exceptions) > 0:
                         query["query"]["bool"]["must_not"] = []
                         for exception in detection.exceptions:
@@ -210,9 +211,6 @@ class Detector(Process):
                                 }
                             )
 
-                    import json
-                    print(json.dumps(query, indent=2))
-
                     detection.last_run = datetime.datetime.utcnow().isoformat()
                     res = elastic.conn.search(index=_input['config']['index'], body=query, scroll='2m')
 
@@ -221,9 +219,8 @@ class Detector(Process):
                         self.logger.info(f"{detection.name} ({detection.uuid}) - Found {len(res['hits']['hits'])} detection hits.")
                         scroll_size = res['hits']['total']['value']
 
-                        # TODO: PARSE THESE
-                        docs += res['hits']['hits']
-                        #events += self.parse_events(res['hits']['hits'])
+                        # Parse the events and extract observables, tags, signature the event
+                        docs += elastic.parse_events(res['hits']['hits'], title=detection.name, signature_values=[detection.detection_id])
                                         
                     else:
                         scroll_size = 0
@@ -235,9 +232,9 @@ class Detector(Process):
                         if len(res['hits']['hits']) > 0:
                             self.logger.info(f"{detection.name} ({detection.uuid}) - Found {len(res['hits']['hits'])} detection hits.")
 
-                            # TODO: PARSE THESE
-                            docs += res['hits']['hits']
-                        #events += self.parse_events(res['hits']['hits'])
+                            # Parse the events and extract observables, tags, signature the event
+                            docs += elastic.parse_events(res['hits']['hits'], title=detection.name, signature_values=[detection.detection_id])
+
                         scroll_size = len(res['hits']['hits'])
 
                     self.logger.info(f"{detection.name} ({detection.uuid}) - Total Hits {len(docs)}")
@@ -257,13 +254,23 @@ class Detector(Process):
 
                     # Update the detection with the meta information from this run
                     self.agent.update_detection(detection.uuid, payload=update_payload)
+                    
+                    # Update all the docs to have detection rule hard values
+                    for doc in docs:
+                        doc.description = detection.description
+                        doc.tags += detection.tags
+                        doc.severity = detection.severity
+                        doc.detection_id = detection.uuid
 
                     # Close the connection to Elasticsearch
                     elastic.conn.transport.close()
+
+                    # Send the detection hits as events to the API
+                    self.agent.process_events(docs)
                     
                     
         except Exception as e:
-            print(e)
+            self.logger.error(e)
         
 
     def run_rules(self):

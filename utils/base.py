@@ -88,6 +88,7 @@ class Event(JSONSerializable):
         self.raw_log = ""
         self.source = ""
         self.signature = ""
+        self.detection_id = None
 
 
     def get_nested_field(self, message, field):
@@ -111,14 +112,12 @@ class Event(JSONSerializable):
                 return value if len(args) == 1 else self.get_nested_field(value, args[1:])
     
 
-    def generate_signature(self, source, fields=[]):
+    def generate_signature(self, source, fields=[], signature_values=[]):
         '''
         Generates an event signature based on a set of supplied
         fields
         '''
         # Compute the signature for the event based on the signature_fields configuration item
-        signature_values = []
-
         if fields != []:
             for signature_field in sorted(fields):
                 value = self.get_nested_field(source, signature_field)
@@ -143,6 +142,7 @@ class Event(JSONSerializable):
                 setattr(self, k, [Observable(**o) for o in data[k]])
             else:
                 setattr(self, k, data[k])
+
 
     def __repr__(self):
         return "<Event reference={}, title={}, signature={}>".format(
