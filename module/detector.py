@@ -182,6 +182,9 @@ class Detector(Process):
 
                     docs = []
 
+                    query_time = 0
+                    start_execution_timer = datetime.datetime.utcnow()
+
                     # Create a connection to Elasticsearch
                     elastic = Elastic(_input['config'], _input['field_mapping'], credential)
 
@@ -217,6 +220,7 @@ class Detector(Process):
                     scroll_id = res['_scroll_id']
                     if 'total' in res['hits']:
                         self.logger.info(f"{detection.name} ({detection.uuid}) - Found {len(res['hits']['hits'])} detection hits.")
+                        query_time += res['took']
                         scroll_size = res['hits']['total']['value']
 
                         # Parse the events and extract observables, tags, signature the event
@@ -230,20 +234,28 @@ class Detector(Process):
                         self.logger.info(f"{detection.name} ({detection.uuid}) - Scrolling Elasticsearch results...")
                         res = elastic.conn.scroll(scroll_id = scroll_id, scroll = '2m') # TODO: Move scroll time to config
                         if len(res['hits']['hits']) > 0:
+                            query_time += res['took']
                             self.logger.info(f"{detection.name} ({detection.uuid}) - Found {len(res['hits']['hits'])} detection hits.")
-
                             # Parse the events and extract observables, tags, signature the event
                             docs += elastic.parse_events(res['hits']['hits'], title=detection.name, signature_values=[detection.detection_id])
 
                         scroll_size = len(res['hits']['hits'])
 
                     self.logger.info(f"{detection.name} ({detection.uuid}) - Total Hits {len(docs)}")
+
+                    # Update all the docs to have detection rule hard values
+                    for doc in docs:
+                        doc.description = detection.description
+                        doc.tags += detection.tags
+                        doc.severity = detection.severity
+                        doc.detection_id = detection.uuid
                     
                     update_payload = {
                         'last_run': detection.last_run,
+                        'hits': len(docs)
                     }
                     
-                    if hasattr(detection, 'total_hits'):
+                    if hasattr(detection, 'total_hits') and detection.total_hits != None:
                         update_payload['total_hits'] = detection.total_hits + len(docs)
                     else:
                         update_payload['total_hits'] = len(docs)
@@ -251,16 +263,19 @@ class Detector(Process):
                     if len(docs) > 0:
                         update_payload['last_hit'] = datetime.datetime.utcnow().isoformat()
 
+                    # Calculate how long the entire detection took to run, this helps identify
+                    # bottlenecks outside the ES query times
+                    end_execution_timer = datetime.datetime.utcnow()
+                    total_execution_time = (end_execution_timer - start_execution_timer).total_seconds()*1000
+
+                    update_payload['time_taken'] = total_execution_time
+                    update_payload['query_time_taken'] = query_time
+
+                    print(update_payload)
+
                     # Update the detection with the meta information from this run
                     self.agent.update_detection(detection.uuid, payload=update_payload)
                     
-                    # Update all the docs to have detection rule hard values
-                    for doc in docs:
-                        doc.description = detection.description
-                        doc.tags += detection.tags
-                        doc.severity = detection.severity
-                        doc.detection_id = detection.uuid
-
                     # Close the connection to Elasticsearch
                     elastic.conn.transport.close()
 
