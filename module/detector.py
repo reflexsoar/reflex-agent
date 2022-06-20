@@ -120,9 +120,9 @@ class Detector(Process):
         self.inputs = {}
         input_uuids = []
         for rule in self.detection_rules:
-            for source in rule['source']:
-                if source['source'] not in input_uuids:
-                    input_uuids.append(source['source'])
+            source = rule['source']
+            if source['uuid'] not in input_uuids:
+                input_uuids.append(source['uuid'])
         
         # Get the configuration for each input
         for input_uuid in input_uuids:
@@ -157,8 +157,8 @@ class Detector(Process):
         """
         detection = Detection(**rule)
 
-        # TODO: Support multiple sources in the future
-        input_uuid = detection.source[0]['source']
+        input_uuid = detection.source['uuid']
+        print(input_uuid)
 
         # Get the input or report an error if the agent doesn't know it
         if input_uuid in self.inputs:
@@ -193,7 +193,7 @@ class Detector(Process):
                         "query": {
                             "bool": { 
                                 "must": [
-                                    {"query_string": { "query": detection.query[0]['query'] }},
+                                    {"query_string": { "query": detection.query['query'] }},
                                     {"range": {"@timestamp": {"gt": "now-{}m".format(detection.lookbehind)}}}
                                 ]
                             }
@@ -279,8 +279,7 @@ class Detector(Process):
 
                     # Send the detection hits as events to the API
                     self.agent.process_events(docs)
-                    
-                    
+
         except Exception as e:
             self.logger.error(e)
         
