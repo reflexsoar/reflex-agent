@@ -41,9 +41,13 @@ class Detection(JSONSerializable):
 
             # Determine the current time in UTC
             current_time = datetime.datetime.utcnow()
+            if hasattr(self, 'mute_period') and self.mute_period > 0:
+                mute_time = datetime.datetime.utcnow() + datetime.timedelta(seconds=self.mute_period*60)
+            else:
+                mute_time = current_time
 
             # If the current_time is greater than the when the detection rule should run again
-            if current_time > next_run:
+            if current_time > next_run and current_time >= mute_time:
 
                 # Compute the delta between the next_run and the current_time
                 # if it is greater than the lookbehind, adjust the lookbehind to account 
