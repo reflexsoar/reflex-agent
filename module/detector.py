@@ -30,6 +30,7 @@ class Detection(JSONSerializable):
             catchup_period (int) - The maximum time in minutes that the detection should adjust
                                     the lookbehind to find missed detections
         '''
+        
         if hasattr(self, 'last_run'):
 
             # Convert the last_run ISO8601 UTC timestamp back to a datetime object
@@ -43,7 +44,7 @@ class Detection(JSONSerializable):
             current_time = datetime.datetime.utcnow()
 
             # Compute the mute period based on the last_hit property
-            if hasattr(self, 'mute_period') and self.mute_period > 0 and hasattr(self,'last_hit') and self.last_hit:
+            if hasattr(self, 'mute_period') and self.mute_period != None and self.mute_period > 0 and hasattr(self,'last_hit') and self.last_hit:
                 mute_time = self.last_hit + datetime.timedelta(seconds=self.mute_period*60)
                 mute_time = mute_time.replace(tzinfo=None)
             else:
@@ -165,7 +166,6 @@ class Detector(Process):
         detection = Detection(**rule)
 
         input_uuid = detection.source['uuid']
-        print(input_uuid)
 
         # Get the input or report an error if the agent doesn't know it
         if input_uuid in self.inputs:
@@ -190,6 +190,7 @@ class Detector(Process):
                     docs = []
 
                     query_time = 0
+                    scroll_size = 0
                     start_execution_timer = datetime.datetime.utcnow()
 
                     # Create a connection to Elasticsearch
@@ -223,7 +224,7 @@ class Detector(Process):
 
                     detection.last_run = datetime.datetime.utcnow().isoformat()
                     res = elastic.conn.search(index=_input['config']['index'], body=query, scroll='2m')
-
+                    
                     scroll_id = res['_scroll_id']
                     if 'total' in res['hits']:
                         self.logger.info(f"{detection.name} ({detection.uuid}) - Found {len(res['hits']['hits'])} detection hits.")
@@ -231,12 +232,12 @@ class Detector(Process):
                         scroll_size = res['hits']['total']['value']
 
                         # Parse the events and extract observables, tags, signature the event
-                        docs += elastic.parse_events(res['hits']['hits'], title=detection.name, signature_values=[detection.detection_id])
-                                        
+                        docs += elastic.parse_events(res['hits']['hits'], title=detection.name, signature_values=[detection.detection_id])                                        
                     else:
                         scroll_size = 0
                         
                     # Scroll
+                    self.logger.info(f"{scroll_size}")
                     while (scroll_size > 0):
                         self.logger.info(f"{detection.name} ({detection.uuid}) - Scrolling Elasticsearch results...")
                         res = elastic.conn.scroll(scroll_id = scroll_id, scroll = '2m') # TODO: Move scroll time to config
@@ -288,7 +289,7 @@ class Detector(Process):
                     self.agent.process_events(docs)
 
         except Exception as e:
-            self.logger.error(e)
+            self.logger.error(f"Foo: {e}")
         
 
     def run_rules(self):
