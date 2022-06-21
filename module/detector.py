@@ -41,8 +41,11 @@ class Detection(JSONSerializable):
 
             # Determine the current time in UTC
             current_time = datetime.datetime.utcnow()
-            if hasattr(self, 'mute_period') and self.mute_period > 0:
-                mute_time = datetime.datetime.utcnow() + datetime.timedelta(seconds=self.mute_period*60)
+
+            # Compute the mute period based on the last_hit property
+            if hasattr(self, 'mute_period') and self.mute_period > 0 and hasattr(self,'last_hit') and self.last_hit:
+                mute_time = self.last_hit + datetime.timedelta(seconds=self.mute_period*60)
+                mute_time = mute_time.replace(tzinfo=None)
             else:
                 mute_time = current_time
 
