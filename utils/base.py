@@ -189,6 +189,7 @@ class Agent(object):
         self.access_token = os.getenv('ACCESS_TOKEN')
         self.console_url = os.getenv('CONSOLE_URL')
         self.ip = self.agent_ip()
+        self.VERSION_NUMBER = "2022.05.01"
 
         log_levels = {
             'DEBUG': logging.DEBUG,
@@ -266,7 +267,8 @@ class Agent(object):
             # Set the HTTP headers
             headers = {
                 'Authorization': 'Bearer %s' % (ACCESS_TOKEN),
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'User-Agent': f'reflexsoar-agent/{self.VERSION_NUMBER}'
             }
 
             # Dynamically create the request
@@ -603,7 +605,8 @@ class Agent(object):
 
         headers = {
             'Authorization': 'Bearer %s' % token,
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'User-Agent': f'reflexsoar-agent/{self.VERSION_NUMBER}'
         }
 
         # If the user has opted to ignore certificate names
