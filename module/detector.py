@@ -113,6 +113,47 @@ class Detector(Process):
         self.credentials = {}
         #self.graceful_shutdown = self.config['graceful_shutdown']
 
+    def extract_fields(self, props):
+        '''
+        Extracts all the fields as flattened dot notation
+        '''
+        fields = []
+        for field in props:
+            if 'properties' in props[field]:
+                for k in props[field]['properties']:
+                    if 'fields' in props[field]['properties'][k]:
+                        for f in props[field]['properties'][k]['fields']:
+                            fields.append(f"{field}.{k}.{f}")
+                    fields.append(f"{field}.{k}")
+            else:
+                fields.append(field)
+        return fields
+
+
+    def update_input_mappings(self):
+        '''
+        Fetches the mappings for each input and updates them so that future rules can leverage
+        the mappings for autocomplete activity
+        '''
+        self.logger.info('Updating input field lists for detection rule autocompletion')
+        for i in self.inputs:
+            _input = self.inputs[i]
+            credential = self.credentials[_input['credential']]
+            elastic = Elastic(_input['config'], _input['field_mapping'], credential)
+
+            fields = []
+            
+            field_mappings = elastic.conn.indices.get_mapping(_input['config']['index'])
+            for index in field_mappings:
+                props = field_mappings[index]['mappings']['properties']
+                fields += self.extract_fields(props)
+
+            fields = sorted(list(set(fields)))
+            put_body = {
+                'index_fields': fields
+            }
+            self.agent.call_mgmt_api(f"input/{i}/update_index_fields", data=put_body, method='PUT')
+
 
     def load_detections(self, active=True):
         '''
@@ -332,6 +373,7 @@ class Detector(Process):
         while self.running:
             self.logger.info('Fetching detections')
             self.load_detections()
-            self.run_rules()
+            #self.run_rules()
+            self.update_input_mappings()
             self.logger.info('Run complete, waiting')
             time.sleep(self.config['wait_interval'])
