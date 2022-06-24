@@ -139,20 +139,41 @@ class Detector(Process):
         for i in self.inputs:
             _input = self.inputs[i]
             credential = self.credentials[_input['credential']]
-            elastic = Elastic(_input['config'], _input['field_mapping'], credential)
 
-            fields = []
-            
-            field_mappings = elastic.conn.indices.get_mapping(_input['config']['index'])
-            for index in field_mappings:
-                props = field_mappings[index]['mappings']['properties']
-                fields += self.extract_fields(props)
+            # Check to see if the fields should be updated based on the last time they were updated
+            should_update_fields = False
+            if 'index_fields_last_updated' in _input:
+                index_fields_last_updated = date_parser.isoparse(_input['index_fields_last_updated'])
+                index_fields_last_updated = index_fields_last_updated.replace(tzinfo=None)
+                current_time = datetime.datetime.utcnow()
+                total_seconds = (current_time - index_fields_last_updated).total_seconds()
+                if total_seconds >= 86400:
+                    should_update_fields = True
+            else:
+                should_update_fields = True
 
-            fields = sorted(list(set(fields)))
-            put_body = {
-                'index_fields': fields
-            }
-            self.agent.call_mgmt_api(f"input/{i}/update_index_fields", data=put_body, method='PUT')
+            # If it is time to update the fields, build an Elastic connection object
+            if should_update_fields:
+                elastic = Elastic(_input['config'], _input['field_mapping'], credential)
+
+                fields = []
+                
+                # Pull the index field mappings for all indices matching the inputs index pattern
+                field_mappings = elastic.conn.indices.get_mapping(_input['config']['index'])
+                for index in field_mappings:
+                    props = field_mappings[index]['mappings']['properties']
+
+                    # Flatten the field names
+                    fields += self.extract_fields(props)
+
+                # Create a unique, sorted list of field names
+                fields = sorted(list(set(fields)))
+                put_body = {
+                    'index_fields': fields
+                }
+                
+                # Update the inputs fields
+                self.agent.call_mgmt_api(f"input/{i}/update_index_fields", data=put_body, method='PUT')
 
 
     def load_detections(self, active=True):
