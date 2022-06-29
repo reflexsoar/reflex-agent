@@ -89,6 +89,7 @@ class Event(JSONSerializable):
         self.source = ""
         self.signature = ""
         self.detection_id = None
+        self.risk_score = None
 
 
     def get_nested_field(self, message, field):

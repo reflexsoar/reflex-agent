@@ -138,7 +138,7 @@ class Elastic(Process):
         return observables
 
 
-    def parse_events(self, hits, title=None, signature_values=[]):
+    def parse_events(self, hits, title=None, signature_values=[], risk_score=None):
         '''
         Parses events pulled from Elasticsearch and formats them 
         into a JSON array that fits the expected input of the REST API
@@ -155,7 +155,7 @@ class Elastic(Process):
             if '_id' in record:
                 source['_id'] = record['_id']
 
-            event = self.set_base_alert(source, title=title)
+            event = self.set_base_alert(source, title=title, risk_score=risk_score)
             observables = self.extract_observables(source)
             if observables:
                 event.observables = observables
@@ -346,7 +346,7 @@ class Elastic(Process):
         return 1
 
 
-    def set_base_alert(self, source, title=None):
+    def set_base_alert(self, source, title=None, risk_score=None):
         '''
         Sets the base information of the event by pulling
         fields defined in the Elastic input config
@@ -393,6 +393,9 @@ class Elastic(Process):
                 event.severity = severity
         else:
             event.severity = 0
+
+        if risk_score:
+            event.risk_score = risk_score
 
         # Set the raw_log field
         event.raw_log = json.dumps(source)
