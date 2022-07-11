@@ -473,13 +473,10 @@ class Agent(object):
 
         events_to_send = []
 
-        print('PRE EXPIRE:', self.event_cache)
-
         # Clear expired items from the cache
         for item in self.event_cache:
 
             # If the item has been in the cache longer than the TTL remove it
-            print(((datetime.datetime.utcnow() - self.event_cache[item]).seconds/60) , self.options.event_realert_ttl)
             if ((datetime.datetime.utcnow() - self.event_cache[item]).seconds/60) > self.options.event_realert_ttl:
                 self.event_cache.pop(item)
 
@@ -497,7 +494,6 @@ class Agent(object):
             if len(events_to_send) == 0:
                 return None
 
-            print('POST ADDS: ', self.event_cache)
             return events_to_send
         return None
 
