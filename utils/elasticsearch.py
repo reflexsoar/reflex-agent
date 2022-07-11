@@ -11,7 +11,6 @@ import hashlib
 
 from .base import Event
 
-
 class Elastic(Process):
 
     def __init__(self, config, field_mapping, credentials):

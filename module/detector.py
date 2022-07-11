@@ -1,3 +1,4 @@
+import json
 import math
 import time
 import logging
@@ -197,10 +198,11 @@ class Detector(Process):
         # Load all the input configurations for each detection
         self.inputs = {}
         input_uuids = []
-        for rule in self.detection_rules:
-            source = rule['source']
-            if source['uuid'] not in input_uuids:
-                input_uuids.append(source['uuid'])
+        if hasattr(self, 'detection_rules'):
+            for rule in self.detection_rules:
+                source = rule['source']
+                if source['uuid'] not in input_uuids:
+                    input_uuids.append(source['uuid'])
 
         # Get the configuration for each input
         for input_uuid in input_uuids:
@@ -220,11 +222,248 @@ class Detector(Process):
         """
         raise NotImplementedError
 
+
+    def get_nested_field(self, message, field):
+        '''
+        Iterates over nested fields to get the final desired value
+        e.g signal.rule.name should return the value of name
+        '''
+
+        if isinstance(field, str):
+            # If the field exists as a flat field with .'s in it return the field
+            if field in message:
+                return message[field]
+            args = field.split('.')
+        else:
+            args = field
+
+        if args and message:
+            element = args[0]
+            if element:
+                value = message.get(element)
+                return value if len(args) == 1 else self.get_nested_field(value, args[1:])
+
+
+    def mismatch_rule(self, detection, credential, _input):
+        """
+        Runs a field mismatch rule (rule_type: 3) against a log source
+        """
+
+        # Create a connection to Elasticsearch
+        elastic = Elastic(
+            _input['config'], _input['field_mapping'], credential)
+
+        query = {
+            "query": {
+                "bool": {
+                    "must": [
+                        {"query_string": {
+                            "query": detection.query['query']}},
+                        {"range": {
+                            "@timestamp": {"gt": "now-{}m".format(detection.lookbehind)}}}
+                    ]
+                }
+            },
+            "size": _input['config']['search_size']
+        }
+
+        docs = self.run_rule_query(query, _input, detection, elastic)
+        hits = []
+        for doc in docs:
+
+            doc.description = detection.description
+            doc.tags += detection.tags
+            doc.severity = detection.severity
+            doc.detection_id = detection.uuid
+
+            hit = False
+            operator = detection.field_mismatch_config['operator']
+
+            # Convert the raw log back to a dictionary
+            raw_log = json.loads(doc.raw_log)           
+
+            # Extract the fields to compare
+            source_field_value = self.get_nested_field(raw_log, detection.field_mismatch_config['source_field'])
+            destination_field_value = self.get_nested_field(raw_log, detection.field_mismatch_config['target_field'])
+
+            # If both fields have a value compare them 
+            if source_field_value and destination_field_value:
+                if operator == '>':
+                    hit = source_field_value > destination_field_value
+                if operator == '>=':
+                    hit = source_field_value >= destination_field_value
+                if operator == '<':
+                    hit = source_field_value < destination_field_value
+                if operator == '<=':
+                    hit = source_field_value <= destination_field_value
+                if operator == '==':
+                    hit = source_field_value == destination_field_value
+                if operator == '!=':
+                    hit = source_field_value != destination_field_value
+
+                if hit:
+                    hit_descriptor = f"{detection.field_mismatch_config['source_field']} value {source_field_value} {operator} {detection.field_mismatch_config['target_field']} value {destination_field_value}"
+                    if doc.description:
+                        doc.description += f"\n\n{hit_descriptor}"
+                    else:
+                        doc.description = hit_descriptor
+                    hits.append(doc)
+
+        
+        update_payload = {
+            'last_run': detection.last_run,
+            'hits': len(hits)
+        }
+        
+        if len(hits) > 0:
+            self.agent.process_events(hits)
+            update_payload['last_hit'] = datetime.datetime.utcnow().isoformat()
+
+        if hasattr(detection, 'total_hits') and detection.total_hits != None:
+            update_payload['total_hits'] = detection.total_hits + len(docs)
+        else:
+            update_payload['total_hits'] = len(docs)            
+
+        self.agent.update_detection(detection.uuid, payload=update_payload)
+
+        # Close the connection to Elasticsearch
+        elastic.conn.transport.close()
+
+
     def match_rule(self, detection):
         """
         Runs a match rule (rule_type: 0) against the log source
         """
         raise NotImplementedError
+
+    def metric_rule(self, detection):
+        """
+        Runs a metric rule (rule_type: 2)
+        """
+        raise NotImplementedError
+
+    def threshold_rule(self, detection, credential, _input):
+        """
+        Runs a base query and determines if the threshold is above a certain value
+        """
+
+        # Create a connection to Elasticsearch
+        elastic = Elastic(
+            _input['config'], _input['field_mapping'], credential)
+
+        query = {
+            "query": {
+                "bool": {
+                    "must": [
+                        {"query_string": {
+                            "query": detection.query['query']}},
+                        {"range": {
+                            "@timestamp": {"gt": "now-{}m".format(detection.lookbehind)}}}
+                    ]
+                }
+            },
+            "size": _input['config']['search_size']
+        }
+
+        query["size"] = 0
+
+        # If there are exclusions/exceptions add them to the query
+        if hasattr(detection, 'exceptions') and detection.exceptions != None:
+            query["query"]["bool"]["must_not"] = []
+            for exception in detection.exceptions:
+                
+                query["query"]["bool"]["must_not"].append(
+                    {
+                        "terms": {
+                            f"{exception['field']}": exception['values']
+                        }
+                    }
+                )
+
+        has_key_field = False
+        if detection.threshold_config['key_field']:
+            has_key_field = True
+            query["aggs"] = {
+                detection.threshold_config['key_field']: {
+                    'terms': {
+                        'field': detection.threshold_config['key_field']
+                    }
+                }
+            }
+                   
+        #self.run_rule_query(query, _input, detection, elastic)
+        docs = []
+        query_time = 0
+        scroll_size = 0
+        operator = detection.threshold_config['operator']
+        threshold = detection.threshold_config['threshold']
+
+        import json as j
+        print(j.dumps(query, indent=2, default=str))
+        res = elastic.conn.search(
+                            index=_input['config']['index'], body=query)
+        if has_key_field == False:
+            hit_count = res['hits']['total']['value']
+            hit = False
+            
+            if operator == '>':
+                hit = hit_count > threshold
+            if operator == '>=':
+                hit = hit_count >= threshold
+            if operator == '<':
+                hit = hit_count < threshold
+            if operator == '<=':
+                hit = hit_count <= threshold
+            if operator == '==':
+                hit = hit_count == threshold
+            if operator == '!=':
+                hit = hit_count != threshold
+           
+            print(f"{hit_count} {operator} {threshold} - {hit}")
+            print(res)
+
+    def run_rule_query(self, query, _input, detection, elastic):
+        
+        docs = []
+        query_time = 0
+        scroll_size = 0
+        res = elastic.conn.search(
+                            index=_input['config']['index'], body=query, scroll='2m')
+
+        scroll_id = res['_scroll_id']
+        if 'total' in res['hits']:
+            self.logger.info(
+                f"{detection.name} ({detection.uuid}) - Found {len(res['hits']['hits'])} detection hits.")
+            query_time += res['took']
+            scroll_size = res['hits']['total']['value']
+
+            # Parse the events and extract observables, tags, signature the event
+            docs += elastic.parse_events(
+                res['hits']['hits'], title=detection.name, signature_values=[detection.detection_id], risk_score=detection.risk_score)
+        else:
+            scroll_size = 0
+
+        # Scroll
+        self.logger.info(f"{scroll_size}")
+        while (scroll_size > 0):
+            self.logger.info(
+                f"{detection.name} ({detection.uuid}) - Scrolling Elasticsearch results...")
+            # TODO: Move scroll time to config
+            res = elastic.conn.scroll(
+                scroll_id=scroll_id, scroll='2m')
+            if len(res['hits']['hits']) > 0:
+                query_time += res['took']
+                self.logger.info(
+                    f"{detection.name} ({detection.uuid}) - Found {len(res['hits']['hits'])} detection hits.")
+                # Parse the events and extract observables, tags, signature the event
+                docs += elastic.parse_events(
+                    res['hits']['hits'], title=detection.name, signature_values=[detection.detection_id], risk_score=detection.risk_score)
+
+            scroll_size = len(res['hits']['hits'])
+
+        self.logger.info(
+            f"{detection.name} ({detection.uuid}) - Total Hits {len(docs)}")
+        return docs
 
     def execute(self, rule):
         """
@@ -268,112 +507,125 @@ class Detector(Process):
                     elastic = Elastic(
                         _input['config'], _input['field_mapping'], credential)
 
-                    # TODO: Support for multiple queries
-                    query = {
-                        "query": {
-                            "bool": {
-                                "must": [
-                                    {"query_string": {
-                                        "query": detection.query['query']}},
-                                    {"range": {
-                                        "@timestamp": {"gt": "now-{}m".format(detection.lookbehind)}}}
-                                ]
-                            }
-                        },
-                        "size": _input['config']['search_size']
+                    rule_types = {
+                        0: self.match_rule,
+                        1: self.threshold_rule,
+                        2: self.metric_rule,
+                        3: self.mismatch_rule
                     }
 
-                    # If there are exclusions/exceptions add them to the query
-                    if hasattr(detection, 'exceptions') and detection.exceptions != None:
-                        query["query"]["bool"]["must_not"] = []
-                        for exception in detection.exceptions:
-                            
-                            query["query"]["bool"]["must_not"].append(
-                                {
-                                    "terms": {
-                                        f"{exception['field']}": exception['values']
-                                    }
-                                }
-                            )
-
                     detection.last_run = datetime.datetime.utcnow().isoformat()
-                    res = elastic.conn.search(
-                        index=_input['config']['index'], body=query, scroll='2m')
 
-                    scroll_id = res['_scroll_id']
-                    if 'total' in res['hits']:
-                        self.logger.info(
-                            f"{detection.name} ({detection.uuid}) - Found {len(res['hits']['hits'])} detection hits.")
-                        query_time += res['took']
-                        scroll_size = res['hits']['total']['value']
+                    if detection.rule_type != 0:
+                        rule_types[detection.rule_type](detection, credential, _input)
+                    
+                    if detection.rule_type == 0 :
 
-                        # Parse the events and extract observables, tags, signature the event
-                        docs += elastic.parse_events(
-                            res['hits']['hits'], title=detection.name, signature_values=[detection.detection_id], risk_score=detection.risk_score)
-                    else:
-                        scroll_size = 0
+                        # TODO: Support for multiple queries
+                        query = {
+                            "query": {
+                                "bool": {
+                                    "must": [
+                                        {"query_string": {
+                                            "query": detection.query['query']}},
+                                        {"range": {
+                                            "@timestamp": {"gt": "now-{}m".format(detection.lookbehind)}}}
+                                    ]
+                                }
+                            },
+                            "size": _input['config']['search_size']
+                        }
 
-                    # Scroll
-                    self.logger.info(f"{scroll_size}")
-                    while (scroll_size > 0):
-                        self.logger.info(
-                            f"{detection.name} ({detection.uuid}) - Scrolling Elasticsearch results...")
-                        # TODO: Move scroll time to config
-                        res = elastic.conn.scroll(
-                            scroll_id=scroll_id, scroll='2m')
-                        if len(res['hits']['hits']) > 0:
-                            query_time += res['took']
+                        # If there are exclusions/exceptions add them to the query
+                        if hasattr(detection, 'exceptions') and detection.exceptions != None:
+                            query["query"]["bool"]["must_not"] = []
+                            for exception in detection.exceptions:
+                                
+                                query["query"]["bool"]["must_not"].append(
+                                    {
+                                        "terms": {
+                                            f"{exception['field']}": exception['values']
+                                        }
+                                    }
+                                )
+
+                        res = elastic.conn.search(
+                            index=_input['config']['index'], body=query, scroll='2m')
+
+                        scroll_id = res['_scroll_id']
+                        if 'total' in res['hits']:
                             self.logger.info(
                                 f"{detection.name} ({detection.uuid}) - Found {len(res['hits']['hits'])} detection hits.")
+                            query_time += res['took']
+                            scroll_size = res['hits']['total']['value']
+
                             # Parse the events and extract observables, tags, signature the event
                             docs += elastic.parse_events(
                                 res['hits']['hits'], title=detection.name, signature_values=[detection.detection_id], risk_score=detection.risk_score)
+                        else:
+                            scroll_size = 0
 
-                        scroll_size = len(res['hits']['hits'])
+                        # Scroll
+                        self.logger.info(f"{scroll_size}")
+                        while (scroll_size > 0):
+                            self.logger.info(
+                                f"{detection.name} ({detection.uuid}) - Scrolling Elasticsearch results...")
+                            # TODO: Move scroll time to config
+                            res = elastic.conn.scroll(
+                                scroll_id=scroll_id, scroll='2m')
+                            if len(res['hits']['hits']) > 0:
+                                query_time += res['took']
+                                self.logger.info(
+                                    f"{detection.name} ({detection.uuid}) - Found {len(res['hits']['hits'])} detection hits.")
+                                # Parse the events and extract observables, tags, signature the event
+                                docs += elastic.parse_events(
+                                    res['hits']['hits'], title=detection.name, signature_values=[detection.detection_id], risk_score=detection.risk_score)
 
-                    self.logger.info(
-                        f"{detection.name} ({detection.uuid}) - Total Hits {len(docs)}")
+                            scroll_size = len(res['hits']['hits'])
 
-                    # Update all the docs to have detection rule hard values
-                    for doc in docs:
-                        doc.description = detection.description
-                        doc.tags += detection.tags
-                        doc.severity = detection.severity
-                        doc.detection_id = detection.uuid
+                        self.logger.info(
+                            f"{detection.name} ({detection.uuid}) - Total Hits {len(docs)}")
 
-                    update_payload = {
-                        'last_run': detection.last_run,
-                        'hits': len(docs)
-                    }
+                        # Update all the docs to have detection rule hard values
+                        for doc in docs:
+                            doc.description = detection.description
+                            doc.tags += detection.tags
+                            doc.severity = detection.severity
+                            doc.detection_id = detection.uuid
 
-                    if hasattr(detection, 'total_hits') and detection.total_hits != None:
-                        update_payload['total_hits'] = detection.total_hits + \
-                            len(docs)
-                    else:
-                        update_payload['total_hits'] = len(docs)
+                        update_payload = {
+                            'last_run': detection.last_run,
+                            'hits': len(docs)
+                        }
 
-                    if len(docs) > 0:
-                        update_payload['last_hit'] = datetime.datetime.utcnow(
-                        ).isoformat()
+                        if hasattr(detection, 'total_hits') and detection.total_hits != None:
+                            update_payload['total_hits'] = detection.total_hits + \
+                                len(docs)
+                        else:
+                            update_payload['total_hits'] = len(docs)
 
-                    # Calculate how long the entire detection took to run, this helps identify
-                    # bottlenecks outside the ES query times
-                    end_execution_timer = datetime.datetime.utcnow()
-                    total_execution_time = (
-                        end_execution_timer - start_execution_timer).total_seconds()*1000
+                        if len(docs) > 0:
+                            update_payload['last_hit'] = datetime.datetime.utcnow(
+                            ).isoformat()
 
-                    update_payload['time_taken'] = total_execution_time
-                    update_payload['query_time_taken'] = query_time
+                        # Calculate how long the entire detection took to run, this helps identify
+                        # bottlenecks outside the ES query times
+                        end_execution_timer = datetime.datetime.utcnow()
+                        total_execution_time = (
+                            end_execution_timer - start_execution_timer).total_seconds()*1000
 
-                    # Update the detection with the meta information from this run
-                    self.agent.update_detection(
-                        detection.uuid, payload=update_payload)
+                        update_payload['time_taken'] = total_execution_time
+                        update_payload['query_time_taken'] = query_time
 
-                    # Close the connection to Elasticsearch
-                    elastic.conn.transport.close()
+                        # Update the detection with the meta information from this run
+                        self.agent.update_detection(
+                            detection.uuid, payload=update_payload)
 
-                    # Send the detection hits as events to the API
-                    self.agent.process_events(docs)
+                        # Close the connection to Elasticsearch
+                        elastic.conn.transport.close()
+
+                        # Send the detection hits as events to the API
+                        self.agent.process_events(docs)
 
         except Exception as e:
             self.logger.error(f"Foo: {e}")
