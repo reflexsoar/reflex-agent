@@ -5,6 +5,7 @@ import hashlib
 import datetime
 import json
 import io
+from threading import Thread
 import time
 from functools import partial
 from retry import retry
@@ -419,7 +420,7 @@ class Agent(object):
                 event_queue.put(None)
 
             for i in range(bulk_workers+1):
-                p = Process(target=self.push_events, args=(event_queue,))
+                p = Thread(target=self.push_events, args=(event_queue,))
                 workers.append(p)
             
             [x.start() for x in workers]
@@ -433,7 +434,7 @@ class Agent(object):
         try:
             while True:
                 events = queue.get()
-                #events = self.check_cache(events, self.cache_ttl)
+                events = self.check_cache(events, self.cache_ttl)
 
                 if events is None:
                   break
@@ -471,7 +472,6 @@ class Agent(object):
         '''
 
         events_to_send = []
-        ttl = ttl*60
 
         print('PRE EXPIRE:', self.event_cache)
 
@@ -479,13 +479,13 @@ class Agent(object):
         for item in self.event_cache:
 
             # If the item has been in the cache longer than the TTL remove it
-            print(((datetime.datetime.utcnow() - self.event_cache[item]).seconds/60) , ttl)
-            if ((datetime.datetime.utcnow() - self.event_cache[item]).seconds/60) > ttl:
+            print(((datetime.datetime.utcnow() - self.event_cache[item]).seconds/60) , self.options.event_realert_ttl)
+            if ((datetime.datetime.utcnow() - self.event_cache[item]).seconds/60) > self.options.event_realert_ttl:
                 self.event_cache.pop(item)
 
         # Check each event to see if it is in the cache
         if events:
-            for event in events:            
+            for event in events:
                 # Compute the cache key based on the cache_key parameter
                 key = getattr(event, cache_key)
 
