@@ -288,18 +288,7 @@ class Detector(Process):
 
             # If both fields have a value compare them 
             if source_field_value and destination_field_value:
-                if operator == '>':
-                    hit = source_field_value > destination_field_value
-                if operator == '>=':
-                    hit = source_field_value >= destination_field_value
-                if operator == '<':
-                    hit = source_field_value < destination_field_value
-                if operator == '<=':
-                    hit = source_field_value <= destination_field_value
-                if operator == '==':
-                    hit = source_field_value == destination_field_value
-                if operator == '!=':
-                    hit = source_field_value != destination_field_value
+                hit = self.value_check(source_field_value, operator, destination_field_value)
 
                 if hit:
                     hit_descriptor = f"{detection.field_mismatch_config['source_field']} value {source_field_value} {operator} {detection.field_mismatch_config['target_field']} value {destination_field_value}"
@@ -336,11 +325,37 @@ class Detector(Process):
         """
         raise NotImplementedError
 
+
     def metric_rule(self, detection):
         """
         Runs a metric rule (rule_type: 2)
         """
         raise NotImplementedError
+
+
+    def value_check(self, value, operator, target):
+        '''
+        Checks if the value against a target value based on a specified
+        operator
+        '''
+
+        try:
+            if operator == '>':
+                return value > target
+            if operator == '>=':
+                return value >= target
+            if operator == '<':
+                return value < target
+            if operator == '<=':
+                return value <= target
+            if operator == '==':
+                return value == target
+            if operator == '!=':
+                return value != target
+            return False
+        except TypeError as e:
+            return False
+
 
     def threshold_rule(self, detection, credential, _input):
         """
@@ -365,7 +380,7 @@ class Detector(Process):
             "size": _input['config']['search_size']
         }
 
-        query["size"] = 0
+        query["size"] = 1
 
         # If there are exclusions/exceptions add them to the query
         if hasattr(detection, 'exceptions') and detection.exceptions != None:
@@ -380,18 +395,26 @@ class Detector(Process):
                     }
                 )
 
+        # Change the query if the threshold is based off a key field
         has_key_field = False
         if detection.threshold_config['key_field']:
             has_key_field = True
+            query["size"] = 0
             query["aggs"] = {
                 detection.threshold_config['key_field']: {
                     'terms': {
                         'field': detection.threshold_config['key_field']
+                    },
+                    'aggs': {
+                        'doc': {
+                            'top_hits': {
+                                'size': 1
+                            }
+                        }
                     }
                 }
             }
                    
-        #self.run_rule_query(query, _input, detection, elastic)
         docs = []
         query_time = 0
         scroll_size = 0
@@ -404,23 +427,39 @@ class Detector(Process):
                             index=_input['config']['index'], body=query)
         if has_key_field == False:
             hit_count = res['hits']['total']['value']
-            hit = False
+
+            hit = self.value_check(hit_count, operator, threshold)
+
+            if hit:
+                docs += res['hits']['hits']            
+
+        else:
+
+            buckets = res['aggregations'][detection.threshold_config['key_field']]['buckets']
             
-            if operator == '>':
-                hit = hit_count > threshold
-            if operator == '>=':
-                hit = hit_count >= threshold
-            if operator == '<':
-                hit = hit_count < threshold
-            if operator == '<=':
-                hit = hit_count <= threshold
-            if operator == '==':
-                hit = hit_count == threshold
-            if operator == '!=':
-                hit = hit_count != threshold
-           
-            print(f"{hit_count} {operator} {threshold} - {hit}")
-            print(res)
+            if 'per_field' in detection.threshold_config and detection.threshold_config['per_field']:
+                for bucket in buckets:
+                    hit_count = bucket['doc_count']
+                    hit = self.value_check(hit_count, operator, threshold)
+                    
+                    if hit:
+                        docs += bucket['doc']['hits']['hits']
+
+                    print(bucket['doc_count'])
+            else:
+                hit_count = len(buckets)
+                print(hit_count)
+
+        docs = elastic.parse_events(docs
+            , title=detection.name, signature_values=[detection.detection_id], risk_score=detection.risk_score)
+
+        for doc in docs:
+            doc.description = detection.description
+            doc.tags += detection.tags
+            doc.severity = detection.severity
+            doc.detection_id = detection.uuid
+
+        print([d.__dict__ for d in docs])
 
     def run_rule_query(self, query, _input, detection, elastic):
         
@@ -464,6 +503,7 @@ class Detector(Process):
         self.logger.info(
             f"{detection.name} ({detection.uuid}) - Total Hits {len(docs)}")
         return docs
+
 
     def execute(self, rule):
         """
