@@ -397,15 +397,22 @@ class Agent(object):
     def heartbeat(self):
         '''
         Pings the API to update the last_heartbeat timestamp of 
-        the agent
+        the agent as well as the current health of the agent
         '''
+
+        healthy = True
+        health_issues = []
 
         if any([self.role_health[role] == 1 for role in self.role_health]):
             self.logger.error('Agent is unhealthy, one or more roles are degraded')
+            healthy = False
+            for role in self.role_health:
+                if self.role_health[role] == 1:
+                    health_issues.append(f'{role} is degraded')
         else:
             self.logger.info('Agent is healthy')
 
-        response = self.call_mgmt_api('agent/heartbeat/{}'.format(self.uuid))
+        response = self.call_mgmt_api('agent/heartbeat/{}'.format(self.uuid), method='POST', data={'healthy': healthy, 'health_issues': health_issues})
         if response and response.status_code == 200:
             return response
 

@@ -76,13 +76,13 @@ if __name__ == "__main__":
     #plugin = Plugin('utilities')
 
     detector_process = None
+
+    logging.info('Running agent')
    
     while True:
 
         agent.get_config()
-        agent.heartbeat()
-
-        logging.info('Running agent')
+        
 
         if agent.config:
 
@@ -167,4 +167,5 @@ if __name__ == "__main__":
 
 
         logging.info('Agent sleeping for {} seconds'.format(30))
+        agent.heartbeat()
         time.sleep(30)

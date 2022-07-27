@@ -431,7 +431,7 @@ class Detector(Process):
             hit = self.value_check(hit_count, operator, threshold)
 
             if hit:
-                docs += res['hits']['hits']            
+                docs += res['hits']['hits']
 
         else:
 
