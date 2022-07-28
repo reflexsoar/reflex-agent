@@ -188,6 +188,8 @@ class Agent(object):
         ''' A new agent object '''
 
         self.uuid = os.getenv('AGENT_UUID')
+        self.healthy = True
+        self.health_issues = []
         self.access_token = os.getenv('ACCESS_TOKEN')
         self.console_url = os.getenv('CONSOLE_URL')
         self.ip = self.agent_ip()
@@ -400,19 +402,25 @@ class Agent(object):
         the agent as well as the current health of the agent
         '''
 
-        healthy = True
-        health_issues = []
+        recovered = False
 
         if any([self.role_health[role] == 1 for role in self.role_health]):
             self.logger.error('Agent is unhealthy, one or more roles are degraded')
-            healthy = False
+            self.healthy = False
             for role in self.role_health:
                 if self.role_health[role] == 1:
-                    health_issues.append(f'{role} is degraded')
+                    self.health_issues.append(f'{role} is degraded')
         else:
+            if self.healthy == False:
+                self.healthy = True
+                self.health_issues = []
+                recovered = True
+                
             self.logger.info('Agent is healthy')
 
-        response = self.call_mgmt_api('agent/heartbeat/{}'.format(self.uuid), method='POST', data={'healthy': healthy, 'health_issues': health_issues})
+        data = {'healthy': self.healthy, 'health_issues': self.health_issues, 'recovered': recovered}
+
+        response = self.call_mgmt_api('agent/heartbeat/{}'.format(self.uuid), method='POST', data=data)
         if response and response.status_code == 200:
             return response
 
