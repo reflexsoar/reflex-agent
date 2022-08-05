@@ -306,10 +306,6 @@ class Detector(Process):
             'last_run': detection.last_run,
             'hits': len(hits)
         }
-        
-        if len(hits) > 0:
-            self.agent.process_events(hits)
-            update_payload['last_hit'] = datetime.datetime.utcnow().isoformat()
 
         # Calculate how long the entire detection took to run, this helps identify
         # bottlenecks outside the ES query times
@@ -324,6 +320,10 @@ class Detector(Process):
             update_payload['total_hits'] = detection.total_hits + len(docs)
         else:
             update_payload['total_hits'] = len(docs)
+
+        if len(hits) > 0:
+            self.agent.process_events(hits)
+            update_payload['last_hit'] = datetime.datetime.utcnow().isoformat()
 
         self.agent.update_detection(detection.uuid, payload=update_payload)
 
@@ -490,10 +490,6 @@ class Detector(Process):
             'last_run': detection.last_run,
             'hits': len(docs)
         }
-       
-        if len(docs) > 0:
-            self.agent.process_events(docs)
-            update_payload['last_hit'] = datetime.datetime.utcnow().isoformat()
 
         # Calculate how long the entire detection took to run, this helps identify
         # bottlenecks outside the ES query times
@@ -508,6 +504,10 @@ class Detector(Process):
             update_payload['total_hits'] = detection.total_hits + len(docs)
         else:
             update_payload['total_hits'] = len(docs)
+
+        if len(docs) > 0:
+            self.agent.process_events(docs)
+            update_payload['last_hit'] = datetime.datetime.utcnow().isoformat()
 
         self.agent.update_detection(detection.uuid, payload=update_payload)
         
