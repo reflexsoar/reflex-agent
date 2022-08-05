@@ -460,7 +460,7 @@ class Agent(object):
             #response = self.call_mgmt_api('agent/heartbeat/{}'.format(self.uuid))
 
 
-    def process_events(self, events):
+    def process_events(self, events, skip_cache_check=False):
         ''' 
         Splits all the events into multiple pusher processes based on the size
         of the number of chunks
@@ -486,14 +486,14 @@ class Agent(object):
                 event_queue.put(None)
 
             for i in range(bulk_workers+1):
-                p = Thread(target=self.push_events, args=(event_queue,))
+                p = Thread(target=self.push_events, args=(event_queue,skip_cache_check,))
                 workers.append(p)
             
             [x.start() for x in workers]
             [x.join() for x in workers]
 
 
-    def push_events(self, queue):
+    def push_events(self, queue, skip_cache_check=False):
         '''
         Pushes events to the bulk ingest API
         '''
@@ -501,7 +501,9 @@ class Agent(object):
         try:
             while True:
                 events = queue.get()
-                events = self.check_cache(events, self.cache_ttl)
+
+                if skip_cache_check == False:
+                    events = self.check_cache(events, self.cache_ttl)
 
                 if events is None:
                   break

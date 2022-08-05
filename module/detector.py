@@ -322,7 +322,7 @@ class Detector(Process):
             update_payload['total_hits'] = len(docs)
 
         if len(hits) > 0:
-            self.agent.process_events(hits)
+            self.agent.process_events(hits, True)
             update_payload['last_hit'] = datetime.datetime.utcnow().isoformat()
 
         self.agent.update_detection(detection.uuid, payload=update_payload)
@@ -506,11 +506,10 @@ class Detector(Process):
             update_payload['total_hits'] = len(docs)
 
         if len(docs) > 0:
-            self.agent.process_events(docs)
+            self.agent.process_events(docs, True)
             update_payload['last_hit'] = datetime.datetime.utcnow().isoformat()
 
-        self.agent.update_detection(detection.uuid, payload=update_payload)
-        
+        self.agent.update_detection(detection.uuid, payload=update_payload)        
 
     def run_rule_query(self, query, _input, detection, elastic):
         
@@ -717,7 +716,7 @@ class Detector(Process):
                         elastic.conn.transport.close()
 
                         # Send the detection hits as events to the API
-                        self.agent.process_events(docs)
+                        self.agent.process_events(docs, True)
 
         except Exception as e:
             self.logger.error(f"Foo: {e}")
