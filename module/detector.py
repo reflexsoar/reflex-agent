@@ -92,7 +92,8 @@ class Detector(Process):
                 'concurrent_rules': 10,
                 'graceful_exit': False,
                 'catchup_period': 1440,
-                'wait_interval': 30
+                'wait_interval': 30,
+                'max_threshold_events': agent.options.max_threshold_events
             }
 
         self.running = True
@@ -366,6 +367,16 @@ class Detector(Process):
         elastic = Elastic(
             _input['config'], _input['field_mapping'], credential)
 
+        
+        # If the detection has a max_events configured and it is not greater than what the 
+        # agent is configured to allow, use the configured value
+        # If the detection does not have a max_events configured, default to 10 events
+        if 'max_events' in detection.threshold_config:
+            if detection.threshold_config['max_events'] > self.config['max_threshold_events']:
+                detection.threshold_config['max_events'] = self.config['max_threshold_events']
+        else:            
+            detection.threshold_config['max_events'] = 10
+
         query = {
             "query": {
                 "bool": {
@@ -380,7 +391,7 @@ class Detector(Process):
             "size": _input['config']['search_size']
         }
 
-        query["size"] = 1
+        query["size"] = detection.threshold_config['max_events']
 
         # If there are exclusions/exceptions add them to the query
         if hasattr(detection, 'exceptions') and detection.exceptions != None:
@@ -408,7 +419,7 @@ class Detector(Process):
                     'aggs': {
                         'doc': {
                             'top_hits': {
-                                'size': 1
+                                'size': detection.threshold_config['max_events']
                             }
                         }
                     }
