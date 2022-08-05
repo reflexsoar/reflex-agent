@@ -250,6 +250,8 @@ class Detector(Process):
         Runs a field mismatch rule (rule_type: 3) against a log source
         """
 
+        start_execution_timer = datetime.datetime.utcnow()
+
         # Create a connection to Elasticsearch
         elastic = Elastic(
             _input['config'], _input['field_mapping'], credential)
@@ -268,7 +270,7 @@ class Detector(Process):
             "size": _input['config']['search_size']
         }
 
-        docs = self.run_rule_query(query, _input, detection, elastic)
+        docs, query_time = self.run_rule_query(query, _input, detection, elastic)
         hits = []
         for doc in docs:
 
@@ -309,10 +311,19 @@ class Detector(Process):
             self.agent.process_events(hits)
             update_payload['last_hit'] = datetime.datetime.utcnow().isoformat()
 
+        # Calculate how long the entire detection took to run, this helps identify
+        # bottlenecks outside the ES query times
+        end_execution_timer = datetime.datetime.utcnow()
+        total_execution_time = (
+            end_execution_timer - start_execution_timer).total_seconds()*1000
+
+        update_payload['time_taken'] = total_execution_time
+        update_payload['query_time_taken'] = query_time
+
         if hasattr(detection, 'total_hits') and detection.total_hits != None:
             update_payload['total_hits'] = detection.total_hits + len(docs)
         else:
-            update_payload['total_hits'] = len(docs)            
+            update_payload['total_hits'] = len(docs)
 
         self.agent.update_detection(detection.uuid, payload=update_payload)
 
@@ -363,11 +374,12 @@ class Detector(Process):
         Runs a base query and determines if the threshold is above a certain value
         """
 
+        start_execution_timer = datetime.datetime.utcnow()
+
         # Create a connection to Elasticsearch
         elastic = Elastic(
             _input['config'], _input['field_mapping'], credential)
 
-        
         # If the detection has a max_events configured and it is not greater than what the 
         # agent is configured to allow, use the configured value
         # If the detection does not have a max_events configured, default to 10 events
@@ -436,6 +448,8 @@ class Detector(Process):
         print(j.dumps(query, indent=2, default=str))
         res = elastic.conn.search(
                             index=_input['config']['index'], body=query)
+
+        query_time = res['took']
         if has_key_field == False:
             hit_count = res['hits']['total']['value']
 
@@ -455,11 +469,13 @@ class Detector(Process):
                     
                     if hit:
                         docs += bucket['doc']['hits']['hits']
-
-                    print(bucket['doc_count'])
             else:
                 hit_count = len(buckets)
-                print(hit_count)
+                hit = self.value_check(hit_count, operator, threshold)
+
+                if hit:
+                    for bucket in buckets:
+                        docs += bucket['doc']['hits']['hits']
 
         docs = elastic.parse_events(docs
             , title=detection.name, signature_values=[detection.detection_id], risk_score=detection.risk_score)
@@ -470,7 +486,31 @@ class Detector(Process):
             doc.severity = detection.severity
             doc.detection_id = detection.uuid
 
-        print([d.__dict__ for d in docs])
+        update_payload = {
+            'last_run': detection.last_run,
+            'hits': len(docs)
+        }
+       
+        if len(docs) > 0:
+            self.agent.process_events(docs)
+            update_payload['last_hit'] = datetime.datetime.utcnow().isoformat()
+
+        # Calculate how long the entire detection took to run, this helps identify
+        # bottlenecks outside the ES query times
+        end_execution_timer = datetime.datetime.utcnow()
+        total_execution_time = (
+            end_execution_timer - start_execution_timer).total_seconds()*1000
+
+        update_payload['time_taken'] = total_execution_time
+        update_payload['query_time_taken'] = query_time
+
+        if hasattr(detection, 'total_hits') and detection.total_hits != None:
+            update_payload['total_hits'] = detection.total_hits + len(docs)
+        else:
+            update_payload['total_hits'] = len(docs)
+
+        self.agent.update_detection(detection.uuid, payload=update_payload)
+        
 
     def run_rule_query(self, query, _input, detection, elastic):
         
@@ -482,8 +522,9 @@ class Detector(Process):
 
         scroll_id = res['_scroll_id']
         if 'total' in res['hits']:
-            self.logger.info(
-                f"{detection.name} ({detection.uuid}) - Found {len(res['hits']['hits'])} detection hits.")
+            if len(res['hits']['hits']) > 0:
+                self.logger.info(
+                    f"{detection.name} ({detection.uuid}) - Found {len(res['hits']['hits'])} detection hits.")
             query_time += res['took']
             scroll_size = res['hits']['total']['value']
 
@@ -494,7 +535,6 @@ class Detector(Process):
             scroll_size = 0
 
         # Scroll
-        self.logger.info(f"{scroll_size}")
         while (scroll_size > 0):
             self.logger.info(
                 f"{detection.name} ({detection.uuid}) - Scrolling Elasticsearch results...")
@@ -511,9 +551,10 @@ class Detector(Process):
 
             scroll_size = len(res['hits']['hits'])
 
-        self.logger.info(
-            f"{detection.name} ({detection.uuid}) - Total Hits {len(docs)}")
-        return docs
+        if len(docs) > 0 :
+            self.logger.info(
+                f"{detection.name} ({detection.uuid}) - Total Hits {len(docs)}")
+        return docs, query_time
 
 
     def execute(self, rule):
