@@ -184,6 +184,7 @@ class Detector(Process):
                 # Update the inputs fields
                 self.agent.call_mgmt_api(
                     f"input/{i}/index_fields", data=put_body, method='PUT')
+                    
 
     def load_detections(self, active=True):
         '''
