@@ -92,7 +92,8 @@ class Detector(Process):
                 'concurrent_rules': 10,
                 'graceful_exit': False,
                 'catchup_period': 1440,
-                'wait_interval': 30
+                'wait_interval': 30,
+                'max_threshold_events': agent.options.max_threshold_events
             }
 
         self.running = True
@@ -183,6 +184,7 @@ class Detector(Process):
                 # Update the inputs fields
                 self.agent.call_mgmt_api(
                     f"input/{i}/index_fields", data=put_body, method='PUT')
+                    
 
     def load_detections(self, active=True):
         '''
@@ -249,6 +251,8 @@ class Detector(Process):
         Runs a field mismatch rule (rule_type: 3) against a log source
         """
 
+        start_execution_timer = datetime.datetime.utcnow()
+
         # Create a connection to Elasticsearch
         elastic = Elastic(
             _input['config'], _input['field_mapping'], credential)
@@ -267,7 +271,7 @@ class Detector(Process):
             "size": _input['config']['search_size']
         }
 
-        docs = self.run_rule_query(query, _input, detection, elastic)
+        docs, query_time = self.run_rule_query(query, _input, detection, elastic)
         hits = []
         for doc in docs:
 
@@ -288,18 +292,7 @@ class Detector(Process):
 
             # If both fields have a value compare them 
             if source_field_value and destination_field_value:
-                if operator == '>':
-                    hit = source_field_value > destination_field_value
-                if operator == '>=':
-                    hit = source_field_value >= destination_field_value
-                if operator == '<':
-                    hit = source_field_value < destination_field_value
-                if operator == '<=':
-                    hit = source_field_value <= destination_field_value
-                if operator == '==':
-                    hit = source_field_value == destination_field_value
-                if operator == '!=':
-                    hit = source_field_value != destination_field_value
+                hit = self.value_check(source_field_value, operator, destination_field_value)
 
                 if hit:
                     hit_descriptor = f"{detection.field_mismatch_config['source_field']} value {source_field_value} {operator} {detection.field_mismatch_config['target_field']} value {destination_field_value}"
@@ -314,15 +307,24 @@ class Detector(Process):
             'last_run': detection.last_run,
             'hits': len(hits)
         }
-        
-        if len(hits) > 0:
-            self.agent.process_events(hits)
-            update_payload['last_hit'] = datetime.datetime.utcnow().isoformat()
+
+        # Calculate how long the entire detection took to run, this helps identify
+        # bottlenecks outside the ES query times
+        end_execution_timer = datetime.datetime.utcnow()
+        total_execution_time = (
+            end_execution_timer - start_execution_timer).total_seconds()*1000
+
+        update_payload['time_taken'] = total_execution_time
+        update_payload['query_time_taken'] = query_time
 
         if hasattr(detection, 'total_hits') and detection.total_hits != None:
             update_payload['total_hits'] = detection.total_hits + len(docs)
         else:
-            update_payload['total_hits'] = len(docs)            
+            update_payload['total_hits'] = len(docs)
+
+        if len(hits) > 0:
+            self.agent.process_events(hits, True)
+            update_payload['last_hit'] = datetime.datetime.utcnow().isoformat()
 
         self.agent.update_detection(detection.uuid, payload=update_payload)
 
@@ -336,20 +338,57 @@ class Detector(Process):
         """
         raise NotImplementedError
 
+
     def metric_rule(self, detection):
         """
         Runs a metric rule (rule_type: 2)
         """
         raise NotImplementedError
 
+
+    def value_check(self, value, operator, target):
+        '''
+        Checks if the value against a target value based on a specified
+        operator
+        '''
+
+        try:
+            if operator == '>':
+                return value > target
+            if operator == '>=':
+                return value >= target
+            if operator == '<':
+                return value < target
+            if operator == '<=':
+                return value <= target
+            if operator == '==':
+                return value == target
+            if operator == '!=':
+                return value != target
+            return False
+        except TypeError as e:
+            return False
+
+
     def threshold_rule(self, detection, credential, _input):
         """
         Runs a base query and determines if the threshold is above a certain value
         """
 
+        start_execution_timer = datetime.datetime.utcnow()
+
         # Create a connection to Elasticsearch
         elastic = Elastic(
             _input['config'], _input['field_mapping'], credential)
+
+        # If the detection has a max_events configured and it is not greater than what the 
+        # agent is configured to allow, use the configured value
+        # If the detection does not have a max_events configured, default to 10 events
+        if 'max_events' in detection.threshold_config:
+            if detection.threshold_config['max_events'] > self.config['max_threshold_events']:
+                detection.threshold_config['max_events'] = self.config['max_threshold_events']
+        else:            
+            detection.threshold_config['max_events'] = 10
 
         query = {
             "query": {
@@ -365,7 +404,7 @@ class Detector(Process):
             "size": _input['config']['search_size']
         }
 
-        query["size"] = 0
+        query["size"] = detection.threshold_config['max_events']
 
         # If there are exclusions/exceptions add them to the query
         if hasattr(detection, 'exceptions') and detection.exceptions != None:
@@ -380,18 +419,26 @@ class Detector(Process):
                     }
                 )
 
+        # Change the query if the threshold is based off a key field
         has_key_field = False
         if detection.threshold_config['key_field']:
             has_key_field = True
+            query["size"] = 0
             query["aggs"] = {
                 detection.threshold_config['key_field']: {
                     'terms': {
                         'field': detection.threshold_config['key_field']
+                    },
+                    'aggs': {
+                        'doc': {
+                            'top_hits': {
+                                'size': detection.threshold_config['max_events']
+                            }
+                        }
                     }
                 }
             }
                    
-        #self.run_rule_query(query, _input, detection, elastic)
         docs = []
         query_time = 0
         scroll_size = 0
@@ -402,25 +449,68 @@ class Detector(Process):
         print(j.dumps(query, indent=2, default=str))
         res = elastic.conn.search(
                             index=_input['config']['index'], body=query)
+
+        query_time = res['took']
         if has_key_field == False:
             hit_count = res['hits']['total']['value']
-            hit = False
+
+            hit = self.value_check(hit_count, operator, threshold)
+
+            if hit:
+                docs += res['hits']['hits']
+
+        else:
+
+            buckets = res['aggregations'][detection.threshold_config['key_field']]['buckets']
             
-            if operator == '>':
-                hit = hit_count > threshold
-            if operator == '>=':
-                hit = hit_count >= threshold
-            if operator == '<':
-                hit = hit_count < threshold
-            if operator == '<=':
-                hit = hit_count <= threshold
-            if operator == '==':
-                hit = hit_count == threshold
-            if operator == '!=':
-                hit = hit_count != threshold
-           
-            print(f"{hit_count} {operator} {threshold} - {hit}")
-            print(res)
+            if 'per_field' in detection.threshold_config and detection.threshold_config['per_field']:
+                for bucket in buckets:
+                    hit_count = bucket['doc_count']
+                    hit = self.value_check(hit_count, operator, threshold)
+                    
+                    if hit:
+                        docs += bucket['doc']['hits']['hits']
+            else:
+                hit_count = len(buckets)
+                hit = self.value_check(hit_count, operator, threshold)
+
+                if hit:
+                    for bucket in buckets:
+                        docs += bucket['doc']['hits']['hits']
+
+        docs = elastic.parse_events(docs
+            , title=detection.name, signature_values=[detection.detection_id], risk_score=detection.risk_score)
+
+        for doc in docs:
+            doc.description = detection.description
+            doc.tags += detection.tags
+            doc.severity = detection.severity
+            doc.detection_id = detection.uuid
+
+        update_payload = {
+            'last_run': detection.last_run,
+            'hits': len(docs)
+        }
+
+        # Calculate how long the entire detection took to run, this helps identify
+        # bottlenecks outside the ES query times
+        end_execution_timer = datetime.datetime.utcnow()
+        total_execution_time = (
+            end_execution_timer - start_execution_timer).total_seconds()*1000
+
+        update_payload['time_taken'] = total_execution_time
+        update_payload['query_time_taken'] = query_time
+
+        if hasattr(detection, 'total_hits') and detection.total_hits != None:
+            update_payload['total_hits'] = detection.total_hits + len(docs)
+        else:
+            update_payload['total_hits'] = len(docs)
+
+        if len(docs) > 0:
+            self.agent.process_events(docs, True)
+            update_payload['last_hit'] = datetime.datetime.utcnow().isoformat()
+
+        self.agent.update_detection(detection.uuid, payload=update_payload)        
 
     def run_rule_query(self, query, _input, detection, elastic):
         
@@ -432,8 +522,9 @@ class Detector(Process):
 
         scroll_id = res['_scroll_id']
         if 'total' in res['hits']:
-            self.logger.info(
-                f"{detection.name} ({detection.uuid}) - Found {len(res['hits']['hits'])} detection hits.")
+            if len(res['hits']['hits']) > 0:
+                self.logger.info(
+                    f"{detection.name} ({detection.uuid}) - Found {len(res['hits']['hits'])} detection hits.")
             query_time += res['took']
             scroll_size = res['hits']['total']['value']
 
@@ -444,7 +535,6 @@ class Detector(Process):
             scroll_size = 0
 
         # Scroll
-        self.logger.info(f"{scroll_size}")
         while (scroll_size > 0):
             self.logger.info(
                 f"{detection.name} ({detection.uuid}) - Scrolling Elasticsearch results...")
@@ -461,9 +551,11 @@ class Detector(Process):
 
             scroll_size = len(res['hits']['hits'])
 
-        self.logger.info(
-            f"{detection.name} ({detection.uuid}) - Total Hits {len(docs)}")
-        return docs
+        if len(docs) > 0 :
+            self.logger.info(
+                f"{detection.name} ({detection.uuid}) - Total Hits {len(docs)}")
+        return docs, query_time
+
 
     def execute(self, rule):
         """
@@ -625,7 +717,7 @@ class Detector(Process):
                         elastic.conn.transport.close()
 
                         # Send the detection hits as events to the API
-                        self.agent.process_events(docs)
+                        self.agent.process_events(docs, True)
 
         except Exception as e:
             self.logger.error(f"Foo: {e}")

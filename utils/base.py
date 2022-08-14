@@ -188,6 +188,8 @@ class Agent(object):
         ''' A new agent object '''
 
         self.uuid = os.getenv('AGENT_UUID')
+        self.healthy = True
+        self.health_issues = []
         self.access_token = os.getenv('ACCESS_TOKEN')
         self.console_url = os.getenv('CONSOLE_URL')
         self.ip = self.agent_ip()
@@ -397,15 +399,28 @@ class Agent(object):
     def heartbeat(self):
         '''
         Pings the API to update the last_heartbeat timestamp of 
-        the agent
+        the agent as well as the current health of the agent
         '''
+
+        recovered = False
 
         if any([self.role_health[role] == 1 for role in self.role_health]):
             self.logger.error('Agent is unhealthy, one or more roles are degraded')
+            self.healthy = False
+            for role in self.role_health:
+                if self.role_health[role] == 1:
+                    self.health_issues.append(f'{role} is degraded')
         else:
+            if self.healthy == False:
+                self.healthy = True
+                self.health_issues = []
+                recovered = True
+                
             self.logger.info('Agent is healthy')
 
-        response = self.call_mgmt_api('agent/heartbeat/{}'.format(self.uuid))
+        data = {'healthy': self.healthy, 'health_issues': self.health_issues, 'recovered': recovered}
+
+        response = self.call_mgmt_api('agent/heartbeat/{}'.format(self.uuid), method='POST', data=data)
         if response and response.status_code == 200:
             return response
 
@@ -445,7 +460,7 @@ class Agent(object):
             #response = self.call_mgmt_api('agent/heartbeat/{}'.format(self.uuid))
 
 
-    def process_events(self, events):
+    def process_events(self, events, skip_cache_check=False):
         ''' 
         Splits all the events into multiple pusher processes based on the size
         of the number of chunks
@@ -454,8 +469,9 @@ class Agent(object):
         event_queue = Queue()
 
         # Set the bulk_size based on the agent configuration, if not set default to 100
-        bulk_size = self.config['bulk_size'] if 'bulk_size' in self.config else 100
+        bulk_size = self.config['bulk_size'] if 'bulk_size' in self.config else 250
         chunks =  [events[i * bulk_size:(i + 1) * bulk_size] for i in range((len(events) + bulk_size - 1) // bulk_size)]
+        print(chunks)
 
         # Queue all the events
         if events:
@@ -470,14 +486,14 @@ class Agent(object):
                 event_queue.put(None)
 
             for i in range(bulk_workers+1):
-                p = Thread(target=self.push_events, args=(event_queue,))
+                p = Thread(target=self.push_events, args=(event_queue,skip_cache_check,))
                 workers.append(p)
             
             [x.start() for x in workers]
             [x.join() for x in workers]
 
 
-    def push_events(self, queue):
+    def push_events(self, queue, skip_cache_check=False):
         '''
         Pushes events to the bulk ingest API
         '''
@@ -485,7 +501,9 @@ class Agent(object):
         try:
             while True:
                 events = queue.get()
-                events = self.check_cache(events, self.cache_ttl)
+
+                if skip_cache_check == False:
+                    events = self.check_cache(events, self.cache_ttl)
 
                 if events is None:
                   break

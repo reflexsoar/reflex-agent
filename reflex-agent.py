@@ -33,6 +33,7 @@ if __name__ == "__main__":
     parser.add_option('--cacert', dest='cacert', type=str, action="store", default=False, help="Path to the certificate authority certificate used for the Reflex API")
     parser.add_option('--ignore-tls', dest='ignore_tls', action='store_false', default=True)
     parser.add_option('--event-realert-ttl', dest='event_realert_ttl', type=int, action="store", default=300, help="The time before an event with the same signature should be sent again")
+    parser.add_option('--max-threshold-events', dest="max_threshold_events", type=int, action="store", default=100, help="The maximum number of events to send to the console when a threshold alarm matches")
     (options,args) = parser.parse_args()
 
     # Override commandline arguments with environmental variables
@@ -54,6 +55,7 @@ if __name__ == "__main__":
     options.proxy = os.getenv('REFLEX_AGENT_PROXY') if os.getenv('REFLEX_AGENT_PROXY') else options.proxy
     options.cacert = os.getenv('REFLEX_AGENT_CA_CERT') if os.getenv('REFLEX_AGENT_CA_CERT') else options.cacert
     options.event_realert_ttl = int(os.getenv('REFLEX_AGENT_EVENT_REALERT_TTL')) if os.getenv('REFLEX_AGENT_EVENT_REALERT_TTL') else options.event_realert_ttl
+    options.max_threshold_events = int(os.getenv('REFLEX_AGENT_MAX_THRESHOLD_EVENTS')) if os.getenv('REFLEX_AGENT_MAX_THRESHOLD_EVENTS') else options.max_threshold_events
     
     if options.ignore_tls and os.getenv('REFLEX_AGENT_IGNORE_TLS'):
         options.ignore_tls = False
@@ -76,13 +78,12 @@ if __name__ == "__main__":
     #plugin = Plugin('utilities')
 
     detector_process = None
+
+    logging.info('Running agent')
    
     while True:
 
-        agent.get_config()
-        agent.heartbeat()
-
-        logging.info('Running agent')
+        agent.get_config()        
 
         if agent.config:
 
@@ -167,4 +168,5 @@ if __name__ == "__main__":
 
 
         logging.info('Agent sleeping for {} seconds'.format(30))
+        agent.heartbeat()
         time.sleep(30)
