@@ -10,7 +10,6 @@ from utils.base import Agent, Plugin
 from multiprocessing import Process, Queue
 from utils.elasticsearch import Elastic
 from dotenv import load_dotenv
-from utils.ldap import LDAPSource
 from module import Detector, Runner
 
 
@@ -72,16 +71,11 @@ if __name__ == "__main__":
     if agent.uuid is None:
         logging.error('Agent .env file corrupt or missing.  Re-pair the agent')
         exit(1)
-    
-    #agent.download_plugins()    
-    #logging.info('Running test plugin!')
-    #plugin = Plugin('utilities')
 
     role_processes = {
         'runner': None,
         'detector': None
     }
-    #detector_process = None
 
     logging.info('Running agent')
    
@@ -160,8 +154,8 @@ if __name__ == "__main__":
                     if i['plugin'] == "LDAP":
                         logging.error('LDAP plugin not implemented yet.')
 
-                        l = LDAPSource(i['config'], credentials)
-                        items = l.query()
+                        #l = LDAPSource(i['config'], credentials)
+                        #items = l.query()
 
                         """
                         threat_list_config = {
@@ -170,7 +164,7 @@ if __name__ == "__main__":
                         }
                         """
 
-                        agent.push_intel(items, i['threat_list_config'])
+                        #agent.push_intel(items, i['threat_list_config'])
 
 
         logging.info('Agent sleeping for {} seconds'.format(30))
