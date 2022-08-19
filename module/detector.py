@@ -445,8 +445,6 @@ class Detector(Process):
         operator = detection.threshold_config['operator']
         threshold = detection.threshold_config['threshold']
 
-        import json as j
-        print(j.dumps(query, indent=2, default=str))
         res = elastic.conn.search(
                             index=_input['config']['index'], body=query)
 
