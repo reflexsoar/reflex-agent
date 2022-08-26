@@ -395,6 +395,7 @@ class Agent(object):
                 else:
                     self.logger.error("Plugin %s failed signature checking and will not be downloaded.  Expected %s, got %s" % (
                         plugin['name'], plugin['file_hash'], checksum))
+        return plugins
 
     def heartbeat(self):
         '''
@@ -471,7 +472,6 @@ class Agent(object):
         # Set the bulk_size based on the agent configuration, if not set default to 100
         bulk_size = self.config['bulk_size'] if 'bulk_size' in self.config else 250
         chunks =  [events[i * bulk_size:(i + 1) * bulk_size] for i in range((len(events) + bulk_size - 1) // bulk_size)]
-        print(chunks)
 
         # Queue all the events
         if events:

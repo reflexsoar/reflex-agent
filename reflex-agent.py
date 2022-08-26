@@ -10,8 +10,7 @@ from utils.base import Agent, Plugin
 from multiprocessing import Process, Queue
 from utils.elasticsearch import Elastic
 from dotenv import load_dotenv
-from utils.ldap import LDAPSource
-from module import Detector, detector
+from module import Detector, Runner
 
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -72,12 +71,11 @@ if __name__ == "__main__":
     if agent.uuid is None:
         logging.error('Agent .env file corrupt or missing.  Re-pair the agent')
         exit(1)
-    
-    #agent.download_plugins()    
-    #logging.info('Running test plugin!')
-    #plugin = Plugin('utilities')
 
-    detector_process = None
+    role_processes = {
+        'runner': None,
+        'detector': None
+    }
 
     logging.info('Running agent')
    
@@ -87,40 +85,42 @@ if __name__ == "__main__":
 
         if agent.config:
 
-            # If the agent should be a detector and the detector process is not started
-            # start it up
-            if 'detector' in agent.config['roles'] and not detector_process:
+            agent_roles = {
+                'runner': Runner,
+                'detector': Detector,
+                #'poller': Poller,
+            }
 
-                # Start the detector role process
-                logging.info("Agent is a detector, spawning detector role")
-                detector_process = Detector({}, agent=agent)
-                detector_process.start()
+            for role in agent_roles:
+                if role in agent.config['roles'] and not role_processes[role]:
 
-                # Set the detector role to healthy
-                agent.role_health['detector'] = 2
+                    # Start up the role process
+                    logging.info(f"Agent is a {role}, spawning {role} role")
+                    role_processes[role] = agent_roles[role]({}, agent=agent)
+                    role_processes[role].start()
 
-            # If the agent should be a detector and the detector process was previously started
-            # check its health and attempt to restart it if it has crashed out
-            elif 'detector' in agent.config['roles'] and detector_process:
-                logging.info("Checking detector module status")
-                if not detector_process.is_alive():
-                    
-                    # Start the detector role process
-                    logging.error('Detector module is dead, restarting detector role')
-                    detector_process = Detector({}, agent=agent)
-                    detector_process.start()
+                    # Set the role as healthy
+                    agent.role_health[role] = 2
 
-                    # Set the detector role to degraded
-                    agent.role_health['detector'] = 1
-                else:
-                    # Set the detector role to healthy
-                    agent.role_health['detector'] = 2
-                
-            # If the agent is no longer a detector, kill the detector role
-            elif not 'detector' in agent.config['roles'] and detector_process:
-                detector_process.close()
-                agent.role_health['detector'] = 0
-                detector_process = None
+                # If the agent should be a specific role and the role process was previously started
+                # check it's health and attempt to restart it if it has crashed
+                elif role in agent.config['roles'] and role_processes[role]:
+                    logging.info(f"Checking {role} module status")
+                    if not role_processes[role].is_alive():
+                        logging.info(f"{role} module has is dead, restarting {role} role")
+                        role_processes[role] = agent_roles[role]({}, agent=agent)
+                        role_processes[role].start()
+                        agent.role_health[role] = 1
+                    else:
+                        agent.role_health[role] = 2
+
+                # If the agent should not be a specific role and the role process was previously started
+                # close the role process and set the role as not running
+                elif not role in agent.config['roles'] and role_processes[role]:
+                    logging.info(f"Agent is no longer a {role}, stopping {role} role")
+                    role_processes[role].close()
+                    agent.role_health[role] = 0
+                    role_processes[role] = None                    
 
 
             if 'poller' in agent.config['roles']:
@@ -154,8 +154,8 @@ if __name__ == "__main__":
                     if i['plugin'] == "LDAP":
                         logging.error('LDAP plugin not implemented yet.')
 
-                        l = LDAPSource(i['config'], credentials)
-                        items = l.query()
+                        #l = LDAPSource(i['config'], credentials)
+                        #items = l.query()
 
                         """
                         threat_list_config = {
@@ -164,7 +164,7 @@ if __name__ == "__main__":
                         }
                         """
 
-                        agent.push_intel(items, i['threat_list_config'])
+                        #agent.push_intel(items, i['threat_list_config'])
 
 
         logging.info('Agent sleeping for {} seconds'.format(30))

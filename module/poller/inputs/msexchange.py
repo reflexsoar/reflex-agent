@@ -1,4 +1,4 @@
-from multiprocessing import Process
+from module.poller.inputs.base import INTEL_INPUT, EVENT_INPUT, BaseInput
 from exchangelib import (
     Credentials,
     Configuration,
@@ -12,7 +12,7 @@ from exchangelib import (
 )
 
 
-class MSExchange(Process):
+class MSExchange(BaseInput):
 
     def __init__(self, config: dict, field_mapping: dict, credentials: tuple) -> 'MSExchange':
         ''' 

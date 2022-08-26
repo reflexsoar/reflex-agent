@@ -264,7 +264,7 @@ class Detector(Process):
                         {"query_string": {
                             "query": detection.query['query']}},
                         {"range": {
-                            "@timestamp": {"gt": "now-{}m".format(detection.lookbehind)}}}
+                            "@timestamp": {"gte": "now-{}m".format(detection.lookbehind)}}}
                     ]
                 }
             },
@@ -370,6 +370,165 @@ class Detector(Process):
             return False
 
 
+    def new_terms_rule(self, detection, credential, _input):
+        """
+        Runs a terms aggregation using a base query and aggregation field and 
+        stores the terms in a base64 encoded sorted list and also stores a 
+        SHA1 hash of the base64 string
+        """
+
+        start_execution_timer = datetime.datetime.utcnow()
+
+        # Create a connection to Elasticsearch
+        elastic = Elastic(
+            _input['config'], _input['field_mapping'], credential)
+
+        query = {
+            "query": {
+                "bool": {
+                    "must": [
+                        
+                    ]
+                }
+            },
+            "size": 0        
+        }
+
+
+        # If there are exclusions/exceptions add them to the query
+        if hasattr(detection, 'exceptions') and detection.exceptions != None:
+            query["query"]["bool"]["must_not"] = []
+            for exception in detection.exceptions:
+                
+                query["query"]["bool"]["must_not"].append(
+                    {
+                        "terms": {
+                            f"{exception['field']}": exception['values']
+                        }
+                    }
+                )
+
+        # Aggregate on the field where the terms should be found
+        query["aggs"] = {
+            detection.new_terms_config['key_field']: {
+                'terms': {
+                    'field': detection.new_terms_config['key_field'],
+                    'size': detection.new_terms_config['max_terms']
+                }
+            }
+        }
+
+        # Set the time range for the old terms query
+        query["query"]["bool"]["must"] = [{
+            "query_string": {
+                    "query": detection.query['query']
+                    }
+                },
+            {"range": {
+                "@timestamp": {
+                    "gte": "now-{}d".format(detection.new_terms_config['window_size']),
+                    "lte": "now-{}m".format(detection.lookbehind)}}}
+            ]
+
+        docs = []
+        query_time = 0
+
+        # Search for terms in the window
+        res = elastic.conn.search(
+                            index=_input['config']['index'], body=query)
+
+        old_terms = []
+        if res:
+            query_time += res['took']
+            old_terms = [term["key"] for term in res["aggregations"][detection.new_terms_config['key_field']]["buckets"]]
+
+        query["query"]["bool"]["must"] = [{
+            "query_string": {
+                    "query": detection.query['query']
+                    }
+                },
+            {"range": {
+                "@timestamp": {
+                    "gte": "now-{}m".format(detection.lookbehind)}}}
+            ]
+
+        # Change the aggregation to include the top hit document so we can use it in an alarm
+        # should a term be new
+        query["aggs"] = {
+            detection.new_terms_config['key_field']: {
+                'terms': {
+                    'field': detection.new_terms_config['key_field'],
+                    'size': detection.new_terms_config['max_terms']
+                },
+                'aggs': {
+                    'doc': {
+                        'top_hits': {
+                            'size': detection.threshold_config['max_events']
+                        }
+                    }
+                }
+            }
+        }
+        
+        # Search for terms in the poll interval
+        res = elastic.conn.search(
+                            index=_input['config']['index'], body=query)
+
+        new_terms = []
+        if res:
+            query_time += res['took']
+            new_terms = [term["key"] for term in res["aggregations"][detection.new_terms_config['key_field']]["buckets"]]
+        
+        # Calculate the difference between the old and new terms
+        net_new_terms = [term for term in new_terms if term not in old_terms]
+        print(net_new_terms)
+        if net_new_terms:
+            for term in res["aggregations"][detection.new_terms_config['key_field']]["buckets"]:
+                if term["key"] in net_new_terms:
+                    docs += term["doc"]["hits"]["hits"]
+
+        print("OK")
+
+        docs = elastic.parse_events(docs
+            , title=detection.name, signature_values=[detection.detection_id], risk_score=detection.risk_score)
+
+        
+
+        for doc in docs:
+            doc.description = detection.description
+            if detection.tags:
+                doc.tags += detection.tags
+            doc.severity = detection.severity
+            doc.detection_id = detection.uuid
+
+        print(docs)
+
+        update_payload = {
+            'last_run': detection.last_run,
+            'hits': len(docs)
+        }
+
+        # Calculate how long the entire detection took to run, this helps identify
+        # bottlenecks outside the ES query times
+        end_execution_timer = datetime.datetime.utcnow()
+        total_execution_time = (
+            end_execution_timer - start_execution_timer).total_seconds()*1000
+
+        update_payload['time_taken'] = total_execution_time
+        update_payload['query_time_taken'] = query_time
+
+        if hasattr(detection, 'total_hits') and detection.total_hits != None:
+            update_payload['total_hits'] = detection.total_hits + len(docs)
+        else:
+            update_payload['total_hits'] = len(docs)
+
+        if len(docs) > 0:
+            self.agent.process_events(docs, True)
+            update_payload['last_hit'] = datetime.datetime.utcnow().isoformat()
+
+        self.agent.update_detection(detection.uuid, payload=update_payload)
+
+
     def threshold_rule(self, detection, credential, _input):
         """
         Runs a base query and determines if the threshold is above a certain value
@@ -397,7 +556,7 @@ class Detector(Process):
                         {"query_string": {
                             "query": detection.query['query']}},
                         {"range": {
-                            "@timestamp": {"gt": "now-{}m".format(detection.lookbehind)}}}
+                            "@timestamp": {"gte": "now-{}m".format(detection.lookbehind)}}}
                     ]
                 }
             },
@@ -445,8 +604,6 @@ class Detector(Process):
         operator = detection.threshold_config['operator']
         threshold = detection.threshold_config['threshold']
 
-        import json as j
-        print(j.dumps(query, indent=2, default=str))
         res = elastic.conn.search(
                             index=_input['config']['index'], body=query)
 
@@ -603,7 +760,8 @@ class Detector(Process):
                         0: self.match_rule,
                         1: self.threshold_rule,
                         2: self.metric_rule,
-                        3: self.mismatch_rule
+                        3: self.mismatch_rule,
+                        4: self.new_terms_rule,
                     }
 
                     detection.last_run = datetime.datetime.utcnow().isoformat()
@@ -621,7 +779,7 @@ class Detector(Process):
                                         {"query_string": {
                                             "query": detection.query['query']}},
                                         {"range": {
-                                            "@timestamp": {"gt": "now-{}m".format(detection.lookbehind)}}}
+                                            "@timestamp": {"gte": "now-{}m".format(detection.lookbehind)}}}
                                     ]
                                 }
                             },
