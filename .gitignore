@@ -5,6 +5,5 @@ __pycache__/
 *$py.class
 
 plugins/*.py
-runner.py
 
 .vscode/
