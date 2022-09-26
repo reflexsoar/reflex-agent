@@ -584,10 +584,13 @@ class Agent(object):
         if not self.options.console:
             errors.append('Missing argument --console')
 
-        if not self.options.roles:
-            errors.append('Missing argument --roles')
+        #if not self.options.roles:
+        #    errors.append('Missing argument --roles')
 
-        roles = self.options.roles.split(',')
+        if self.options.roles != None and isinstance(str, self.options.roles):
+            roles = self.options.roles.split(',')
+        else:
+            roles = []
         token = self.options.token
         console = self.options.console
 
@@ -601,7 +604,6 @@ class Agent(object):
         # and exit the agent
         if len(errors) > 0:
             self.logger.info('\n'.join(errors))
-            exit(1)
 
         agent_data = {
             "name": self.hostname,
@@ -611,7 +613,6 @@ class Agent(object):
 
         if self.options.groups:
             agent_data['groups'] = self.options.groups
-
 
         # Check if any agent groups are defined and
         # split them out into an array if they are
