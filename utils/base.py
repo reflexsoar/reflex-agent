@@ -568,7 +568,7 @@ class Agent(object):
 
 
 
-    @retry(delay=30)
+    #@retry(delay=30)
     def pair(self):
         '''
         Pairs an agent with the console, this only needs to be run
@@ -587,7 +587,7 @@ class Agent(object):
         #if not self.options.roles:
         #    errors.append('Missing argument --roles')
 
-        if self.options.roles != None and isinstance(str, self.options.roles):
+        if self.options.roles != None and isinstance(self.options.roles, str):
             roles = self.options.roles.split(',')
         else:
             roles = []
