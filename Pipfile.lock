@@ -18,11 +18,11 @@
     "default": {
         "certifi": {
             "hashes": [
-                "sha256:36973885b9542e6bd01dea287b2b4b3b21236307c56324fcc3f1160f2d655ed5",
-                "sha256:e232343de1ab72c2aa521b625c80f699e356830fd0e2c620b465b304b17b0516"
+                "sha256:0d9c601124e5a6ba9712dbc60d9c53c21e34f5f641fe83002317394311bdce14",
+                "sha256:90c1a32f1d68f940488354e36370f6cca89f0f106db09518524c88d6ed83f382"
             ],
             "markers": "python_version >= '3.6'",
-            "version": "==2022.9.14"
+            "version": "==2022.9.24"
         },
         "charset-normalizer": {
             "hashes": [
@@ -58,11 +58,11 @@
         },
         "elasticsearch": {
             "hashes": [
-                "sha256:b2a9bb368cc376674ff61ddbe5396584e16ac2a8754752e8f0c4056a42557643",
-                "sha256:ed729da0342a9f078181f686fb064c047d2abd23bb1cf23e185257f55d4cf18d"
+                "sha256:8496f5ee4974c127f6d1cee0c48ab185a086bc1c9edba429f158b9a95bb75411",
+                "sha256:e9d61209908e3e26ae9ab4b5d7eb2b2387cf4578d20a1afc8eb649dfc9350efe"
             ],
             "index": "pypi",
-            "version": "==8.4.1"
+            "version": "==8.4.2"
         },
         "idna": {
             "hashes": [
