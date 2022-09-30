@@ -66,7 +66,7 @@ class JSONSerializable(object):
 class Observable(JSONSerializable):
 
     def __init__(self, value, dataType, tlp, tags, ioc, spotted, safe):
-        self.value = value
+        self.value = str(value)
         self.dataType = dataType
         self.tlp = tlp
         self.tags = tags
