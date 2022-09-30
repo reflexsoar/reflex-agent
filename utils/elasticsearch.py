@@ -110,7 +110,7 @@ class Elastic(Process):
                 if isinstance(value, list):
                     for item in value:
                         observables += [{
-                            "value":item,
+                            "value":str(item),
                             "data_type":field['data_type'],
                             "tlp":field['tlp'],
                             "ioc": field['ioc'],
@@ -122,7 +122,7 @@ class Elastic(Process):
                         }]
                 else:
                     observables += [{
-                        "value":value,
+                        "value":str(value),
                         "data_type":field['data_type'],
                         "tlp":field['tlp'],
                         "ioc": field['ioc'],
