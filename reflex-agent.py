@@ -33,6 +33,7 @@ if __name__ == "__main__":
     parser.add_option('--ignore-tls', dest='ignore_tls', action='store_false', default=True)
     parser.add_option('--event-realert-ttl', dest='event_realert_ttl', type=int, action="store", default=300, help="The time before an event with the same signature should be sent again")
     parser.add_option('--max-threshold-events', dest="max_threshold_events", type=int, action="store", default=100, help="The maximum number of events to send to the console when a threshold alarm matches")
+    parser.add_option('--skip-cache-check', dest="skip_cache_check", action="store_true", default=False)
     (options,args) = parser.parse_args()
 
     # Override commandline arguments with environmental variables
@@ -47,6 +48,9 @@ if __name__ == "__main__":
 
     if not options.name and os.getenv('REFLEX_AGENT_NAME'):
         options.name = os.getenv('REFLEX_AGENT_NAME')
+
+    if not options.skip_cache_check and os.getenv('REFLEX_AGENT_SKIP_CACHE_CHECK'):
+        options.skip_cache_check = os.getenv('REFLEX_AGENT_SKIP_CACHE_CHECK')
             
     options.roles = os.getenv('REFLEX_AGENT_ROLES') if os.getenv('REFLEX_AGENT_ROLES') else options.roles
     options.groups = os.getenv('REFLEX_AGENT_GROUPS') if os.getenv('REFLEX_AGENT_GROUPS') else options.groups
@@ -145,7 +149,7 @@ if __name__ == "__main__":
                             e = Elastic(i['config'], i['field_mapping'], credentials)
                             events = e.run()
 
-                            agent.process_events(events)
+                            agent.process_events(events, agent.options.skip_cache_check)
 
                         if i['plugin'] == "MSExchange":
                             logging.error('MSExchange plugin not implemented yet.')
