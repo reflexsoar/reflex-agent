@@ -495,12 +495,8 @@ class Detector(Process):
                 if term["key"] in net_new_terms:
                     docs += term["doc"]["hits"]["hits"]
 
-        print("OK")
-
         docs = elastic.parse_events(docs
             , title=detection.name, signature_values=[detection.detection_id], risk_score=detection.risk_score)
-
-        
 
         for doc in docs:
             doc.description = getattr(detection, 'description', 'No description provided')
