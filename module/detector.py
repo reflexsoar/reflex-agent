@@ -115,6 +115,7 @@ class Detector(Process):
         self.agent = agent
         self.inputs = {}
         self.credentials = {}
+        self.detection_rules = [] 
         #self.graceful_shutdown = self.config['graceful_shutdown']
 
     def extract_fields(self, props):
@@ -845,10 +846,10 @@ class Detector(Process):
 
                         # Update all the docs to have detection rule hard values
                         for doc in docs:
-                            doc.description = detection.description
-                            doc.tags += detection.tags
-                            doc.severity = detection.severity
-                            doc.detection_id = detection.uuid
+                            doc.description = getattr(detection, 'description', 'No description provided')
+                            doc.tags += getattr(detection,'tags',[])
+                            doc.severity = getattr(detection, 'severity', 1)
+                            doc.detection_id = getattr(detection, 'uuid', None)
 
                         update_payload = {
                             'last_run': detection.last_run,
@@ -900,8 +901,11 @@ class Detector(Process):
                 yield rules[i:i + concurrent_rules]
 
         # Determine which rules to run in parallel based on the concurrent_rules setting
-        rule_sets = list(split_rules(self.detection_rules,
-                         self.config['concurrent_rules']))
+        if self.detection_rules:
+            rule_sets = list(split_rules(self.detection_rules,
+                            self.config['concurrent_rules']))
+        else:
+            rule_sets = []
 
         # For each set of rules
         for rules in rule_sets:
