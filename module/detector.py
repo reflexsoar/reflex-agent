@@ -46,7 +46,8 @@ class Detection(JSONSerializable):
 
             # Compute the mute period based on the last_hit property
             if hasattr(self, 'mute_period') and self.mute_period != None and self.mute_period > 0 and hasattr(self, 'last_hit') and self.last_hit:
-                mute_time = self.last_hit + \
+                last_hit = date_parser.isoparse(self.last_hit)
+                mute_time = last_hit + \
                     datetime.timedelta(seconds=self.mute_period*60)
                 mute_time = mute_time.replace(tzinfo=None)
             else:
