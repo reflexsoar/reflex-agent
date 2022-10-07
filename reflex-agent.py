@@ -65,11 +65,30 @@ if __name__ == "__main__":
     
     agent = Agent(options=options)
     
+    # If trying to pair the agent
     if options.pair:
+
+        # Start the process as not paired
         paired = False
-        logging.info('Pairing agent..')
-        paired = agent.pair()
+
+        # If the agent picked up its UUID and a previous access_token via .env
+        # try to heartbeat
+        if agent.uuid and agent.access_token:
+            logging.info('Existing UUID and access token found.  Attempting to heartbeat.')
+            response = agent.heartbeat()
+
+            # If the heartbeat succeeds set paired to True and skip the rest
+            if response:
+                paired = True
+            else:
+                logging.info('Heartbeat failed.  Attempting to pair.')
+
         if paired is not True:
+            logging.info('Pairing agent..')
+            paired = agent.pair()
+
+        if paired is not True:
+            logging.error('Failed to pair agent')
             exit(1)
 
     if agent.uuid is None:

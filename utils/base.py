@@ -424,6 +424,9 @@ class Agent(object):
         response = self.call_mgmt_api('agent/heartbeat/{}'.format(self.uuid), method='POST', data=data)
         if response and response.status_code == 200:
             return response
+        else:
+            return None
+
 
     def get_nested(self, message, *args):
         ''' Iterates over nested fields to get the final desired value '''
