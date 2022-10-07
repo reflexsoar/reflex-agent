@@ -283,10 +283,10 @@ class Detector(Process):
         hits = []
         for doc in docs:
 
-            doc.description = detection.description
-            doc.tags += detection.tags
-            doc.severity = detection.severity
-            doc.detection_id = detection.uuid
+            doc.description = getattr(detection, 'description', 'No description provided')
+            doc.tags += getattr(detection,'tags',[])
+            doc.severity = getattr(detection, 'severity', 1)
+            doc.detection_id = getattr(detection, 'uuid', None)
 
             hit = False
             operator = detection.field_mismatch_config['operator']
@@ -503,13 +503,10 @@ class Detector(Process):
         
 
         for doc in docs:
-            doc.description = detection.description
-            if detection.tags:
-                doc.tags += detection.tags
-            doc.severity = detection.severity
-            doc.detection_id = detection.uuid
-
-        print(docs)
+            doc.description = getattr(detection, 'description', 'No description provided')
+            doc.tags += getattr(detection,'tags',[])
+            doc.severity = getattr(detection, 'severity', 1)
+            doc.detection_id = getattr(detection, 'uuid', None)
 
         update_payload = {
             'last_run': detection.last_run,
@@ -647,10 +644,10 @@ class Detector(Process):
             , title=detection.name, signature_values=[detection.detection_id], risk_score=detection.risk_score)
 
         for doc in docs:
-            doc.description = detection.description
-            doc.tags += detection.tags
-            doc.severity = detection.severity
-            doc.detection_id = detection.uuid
+            doc.description = getattr(detection, 'description', 'No description provided')
+            doc.tags += getattr(detection,'tags',[])
+            doc.severity = getattr(detection, 'severity', 1)
+            doc.detection_id = getattr(detection, 'uuid', None)
 
         update_payload = {
             'last_run': detection.last_run,
