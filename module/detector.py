@@ -46,7 +46,8 @@ class Detection(JSONSerializable):
 
             # Compute the mute period based on the last_hit property
             if hasattr(self, 'mute_period') and self.mute_period != None and self.mute_period > 0 and hasattr(self, 'last_hit') and self.last_hit:
-                mute_time = self.last_hit + \
+                last_hit = date_parser.isoparse(self.last_hit)
+                mute_time = last_hit + \
                     datetime.timedelta(seconds=self.mute_period*60)
                 mute_time = mute_time.replace(tzinfo=None)
             else:
@@ -283,10 +284,10 @@ class Detector(Process):
         hits = []
         for doc in docs:
 
-            doc.description = detection.description
-            doc.tags += detection.tags
-            doc.severity = detection.severity
-            doc.detection_id = detection.uuid
+            doc.description = getattr(detection, 'description', 'No description provided')
+            doc.tags += getattr(detection,'tags',[])
+            doc.severity = getattr(detection, 'severity', 1)
+            doc.detection_id = getattr(detection, 'uuid', None)
 
             hit = False
             operator = detection.field_mismatch_config['operator']
@@ -495,21 +496,14 @@ class Detector(Process):
                 if term["key"] in net_new_terms:
                     docs += term["doc"]["hits"]["hits"]
 
-        print("OK")
-
         docs = elastic.parse_events(docs
             , title=detection.name, signature_values=[detection.detection_id], risk_score=detection.risk_score)
 
-        
-
         for doc in docs:
-            doc.description = detection.description
-            if detection.tags:
-                doc.tags += detection.tags
-            doc.severity = detection.severity
-            doc.detection_id = detection.uuid
-
-        print(docs)
+            doc.description = getattr(detection, 'description', 'No description provided')
+            doc.tags += getattr(detection,'tags',[])
+            doc.severity = getattr(detection, 'severity', 1)
+            doc.detection_id = getattr(detection, 'uuid', None)
 
         update_payload = {
             'last_run': detection.last_run,
@@ -647,10 +641,10 @@ class Detector(Process):
             , title=detection.name, signature_values=[detection.detection_id], risk_score=detection.risk_score)
 
         for doc in docs:
-            doc.description = detection.description
-            doc.tags += detection.tags
-            doc.severity = detection.severity
-            doc.detection_id = detection.uuid
+            doc.description = getattr(detection, 'description', 'No description provided')
+            doc.tags += getattr(detection,'tags',[])
+            doc.severity = getattr(detection, 'severity', 1)
+            doc.detection_id = getattr(detection, 'uuid', None)
 
         update_payload = {
             'last_run': detection.last_run,
