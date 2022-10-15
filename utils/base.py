@@ -215,12 +215,17 @@ class Agent(object):
         else:
             self.hostname = options.name
             
-        self.config = {}
+        self.config = {
+            'policy': {
+                'revision': 0
+            }
+        }
         self.options = options
         self.event_cache = {}
         self.cache_key = 'signature'
         self.cache_ttl = 30 # Number of minutes an item should be in the cache
         self.detection_rules = []
+        self.health_check_interval = 30 # Number of seconds between health checks
 
         # Set a role health state, 0 = disabled, 1 = degraded, 2 = healthy
         self.role_health = {
@@ -334,6 +339,14 @@ class Agent(object):
         response = self.call_mgmt_api('agent/{}'.format(self.uuid))
         if response and response.status_code == 200:
             self.config = response.json()
+
+            # If the policy has roles configured to override, override the direct assigned roles
+            # on the agent
+            if len(self.config['policy']['roles']) > 0:
+                self.config['roles'] = self.config['policy']['roles']
+
+            self.logger.setLevel(self.config['policy']['logging_level'])
+
             if len(self.config['groups']) > 0:
                 for group in self.config['groups']:
                     self.config['inputs'] += group['inputs']

@@ -52,19 +52,26 @@ class Runner(Process):
     has triggered from the ReflexSOAR API
     '''
 
-    def __init__(self, config, agent=None, log_level='INFO', *args, **kwargs):
+    def __init__(self, config, agent=None, log_level='ERROR', *args, **kwargs):
 
         super(Runner, self).__init__(*args, **kwargs)
 
-        if 'runner' in config:
-            self.config = config['runner']
+        
+
+        if config != {}:
+            self.config = {}
         else:
             self.config = {
                 'concurrent_actions': 10,
                 'graceful_exit': False,
                 'wait_interval': 5,
-                'plugin_poll_interval': 60
+                'plugin_poll_interval': 60,
+                'logging_level': 'ERROR'
             }
+
+        if hasattr(agent, 'config'):
+            if 'policy' in agent.config and 'runner_config' in agent.config['policy']:
+                self.config.update(agent.config['policy']['runner_config'])
 
         self.running = True
 
@@ -79,14 +86,19 @@ class Runner(Process):
             '%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
 
         self.logger = logging.getLogger(self.__class__.__name__)
+        
+        if self.config['logging_level'] != log_level:
+            self.log_level = self.config['logging_level']
+        else:
+            self.log_level = log_level
+        
+        self.logger.setLevel(log_levels[self.log_level])
         self.logger.addHandler(log_handler)
-        self.logger.setLevel(log_levels[log_level])
-        self.log_level = log_level
         self.last_plugin_poll = None
         self.agent = agent
         self.actions = []
         self.plugins = []
-        self.loaded_plugins = ['utilities']
+        self.loaded_plugins = []
 
     def download_plugins(self):
         '''
