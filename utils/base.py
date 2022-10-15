@@ -217,7 +217,8 @@ class Agent(object):
             
         self.config = {
             'policy': {
-                'revision': 0
+                'revision': 0,
+                'uuid': '00000000-0000-0000-0000-000000000000'
             }
         }
         self.options = options

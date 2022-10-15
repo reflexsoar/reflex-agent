@@ -107,8 +107,9 @@ if __name__ == "__main__":
     while True:
 
         old_revision = agent.config['policy']['revision']
+        policy_uuid = agent.config['policy']['uuid']
         agent.get_config()
-        if agent.config['policy']['revision'] > old_revision:
+        if agent.config['policy']['revision'] != old_revision or agent.config['policy']['uuid'] != policy_uuid:
             restart_roles = True
         else:
             restart_roles = False
