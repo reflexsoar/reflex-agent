@@ -101,10 +101,18 @@ if __name__ == "__main__":
     }
 
     logging.info('Running agent')
+
+    restart_roles = False
    
     while True:
 
-        agent.get_config()        
+        old_revision = agent.config['policy']['revision']
+        policy_uuid = agent.config['policy']['uuid']
+        agent.get_config()
+        if agent.config['policy']['revision'] != old_revision or agent.config['policy']['uuid'] != policy_uuid:
+            restart_roles = True
+        else:
+            restart_roles = False
 
         if agent.config:
 
@@ -113,6 +121,15 @@ if __name__ == "__main__":
                 'detector': Detector,
                 #'poller': Poller,
             }
+
+            if restart_roles:
+                logging.info(f"Agent policy updated, restarting all roles with new configuration values")
+                for role in role_processes:
+                    if role_processes[role]:
+                        logging.info(f"Stopping stopping {role} role")
+                        role_processes[role].join(1)
+                        role_processes[role].terminate()
+                        role_processes[role] = None
 
             if agent.config['roles']:
                 for role in agent_roles:
@@ -142,7 +159,8 @@ if __name__ == "__main__":
                     # close the role process and set the role as not running
                     elif not role in agent.config['roles'] and role_processes[role]:
                         logging.info(f"Agent is no longer a {role}, stopping {role} role")
-                        role_processes[role].close()
+                        role_processes[role].join(1)
+                        role_processes[role].terminate()
                         agent.role_health[role] = 0
                         role_processes[role] = None                    
 
@@ -194,11 +212,11 @@ if __name__ == "__main__":
                 for role in role_processes:
                     if role_processes[role]:
                         logging.info(f"Agent is no longer a {role}, stopping {role} role")
-                        role_processes[role].join()
-                        role_processes[role].close()
-                        role_processes[role] = None                
+                        role_processes[role].join(1)
+                        role_processes[role].terminate()
+                        role_processes[role] = None
 
 
-        logging.info('Agent sleeping for {} seconds'.format(30))
         agent.heartbeat()
-        time.sleep(30)
+        logging.info('Agent sleeping for {} seconds'.format(agent.config['policy']['health_check_interval']))        
+        time.sleep(agent.config['policy']['health_check_interval'])

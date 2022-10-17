@@ -277,14 +277,19 @@ class Elastic(Process):
         '''
         Iterates over nested fields to get the final desired value
         e.g signal.rule.name should return the value of name
+
+        Paramters:
+            message (dict): A dictionary of values you want to iterate over
+            field (str): The field you want to extract from the message in dotted format
+
+        Return:
+            value: The extracted value, may be the response from this function calling itself again
         '''
 
         if isinstance(field, str):
-
-            # If the field exists as a flat field with .'s in it return the field
             if field in message:
                 return message[field]
-                
+
             args = field.split('.')
         else:
             args = field
@@ -292,7 +297,27 @@ class Elastic(Process):
         if args and message:
             element = args[0]
             if element:
-                value = message.get(element)
+                if isinstance(message, list):
+                    values = []
+                    value = [m for m in message if m is not None]
+                    if any(isinstance(i, list) for i in value):
+                        for l in value:
+                            if isinstance(l, list):
+                                values += [v for v in l if v is not None]
+                    else:
+                        values += [v for v in value if not isinstance(v, list)]
+                    value = values                    
+                else:
+                    if isinstance(message, dict):
+                        value = message.get(element)
+                    else:
+                        value = message
+
+                if isinstance(value, list):
+                    if len(value) > 0 and isinstance(value[0], dict):
+                        if len(args) > 1:
+                            value = [self.get_nested_field(item, args[1:]) for item in value]
+
                 return value if len(args) == 1 else self.get_nested_field(value, args[1:])
 
 
