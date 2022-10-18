@@ -216,6 +216,7 @@ class Agent(object):
             self.hostname = options.name
             
         self.config = {
+            'roles': [],
             'policy': {
                 'revision': 0,
                 'uuid': '00000000-0000-0000-0000-000000000000',
