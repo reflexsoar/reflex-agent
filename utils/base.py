@@ -372,9 +372,14 @@ class Agent(object):
 
             # If the policy has roles configured to override, override the direct assigned roles
             # on the agent
-            if 'policy' in self.config and 'roles' in self.config['policy']:
-                if len(self.config['policy']['roles']) > 0:
-                    self.config['roles'] = self.config['policy']['roles']
+            if 'policy' in self.config:
+                
+                if 'roles' in self.config['policy']:
+                    if len(self.config['policy']['roles']) > 0:
+                        self.config['roles'] = self.config['policy']['roles']
+                        
+                if 'health_check_interval' in self.config['policy']:
+                    self.health_check_interval = self.config['policy']['health_check_interval']
 
             self.logger.setLevel(self.config['policy']['logging_level'])
 
