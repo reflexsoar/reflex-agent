@@ -218,5 +218,5 @@ if __name__ == "__main__":
 
 
         agent.heartbeat()
-        logging.info('Agent sleeping for {} seconds'.format(agent.config['policy']['health_check_interval']))        
-        time.sleep(agent.config['policy']['health_check_interval'])
+        logging.info('Agent sleeping for {} seconds'.format(agent.health_check_interval))        
+        time.sleep(agent.health_check_interval)
