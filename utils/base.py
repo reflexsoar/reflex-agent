@@ -218,7 +218,8 @@ class Agent(object):
         self.config = {
             'policy': {
                 'revision': 0,
-                'uuid': '00000000-0000-0000-0000-000000000000'
+                'uuid': '00000000-0000-0000-0000-000000000000',
+                'roles': []
             }
         }
         self.options = options
@@ -340,9 +341,6 @@ class Agent(object):
         response = self.call_mgmt_api('agent/{}'.format(self.uuid))
         if response and response.status_code == 200:
             self.config = response.json()
-
-            if 'roles' not in self.config:
-                self.config['roles'] = []
 
             # If the policy has roles configured to override, override the direct assigned roles
             # on the agent
