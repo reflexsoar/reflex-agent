@@ -341,10 +341,14 @@ class Agent(object):
         if response and response.status_code == 200:
             self.config = response.json()
 
+            if 'roles' not in self.config:
+                self.config['roles'] = []
+
             # If the policy has roles configured to override, override the direct assigned roles
             # on the agent
-            if len(self.config['policy']['roles']) > 0:
-                self.config['roles'] = self.config['policy']['roles']
+            if 'policy' in self.config and 'roles' in self.config['policy']:
+                if len(self.config['policy']['roles']) > 0:
+                    self.config['roles'] = self.config['policy']['roles']
 
             self.logger.setLevel(self.config['policy']['logging_level'])
 
