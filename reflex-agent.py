@@ -116,6 +116,8 @@ if __name__ == "__main__":
 
         if agent.config:
 
+            print(agent.config)
+
             agent_roles = {
                 'runner': Runner,
                 'detector': Detector,
