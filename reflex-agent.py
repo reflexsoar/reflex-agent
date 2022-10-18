@@ -126,7 +126,7 @@ if __name__ == "__main__":
                 logging.info(f"Agent policy updated, restarting all roles with new configuration values")
                 for role in role_processes:
                     if role_processes[role]:
-                        logging.info(f"Stopping stopping {role} role")
+                        logging.info(f"Stopping {role} role")
                         role_processes[role].join(1)
                         role_processes[role].terminate()
                         role_processes[role] = None
@@ -159,8 +159,8 @@ if __name__ == "__main__":
                     # close the role process and set the role as not running
                     elif not role in agent.config['roles'] and role_processes[role]:
                         logging.info(f"Agent is no longer a {role}, stopping {role} role")
-                        role_processes[role].join(1)
                         role_processes[role].terminate()
+                        role_processes[role].join(1)                        
                         agent.role_health[role] = 0
                         role_processes[role] = None                    
 
@@ -212,8 +212,9 @@ if __name__ == "__main__":
                 for role in role_processes:
                     if role_processes[role]:
                         logging.info(f"Agent is no longer a {role}, stopping {role} role")
-                        role_processes[role].join(1)
+                        
                         role_processes[role].terminate()
+                        role_processes[role].join(1)
                         role_processes[role] = None
 
 
