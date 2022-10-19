@@ -13,7 +13,8 @@ import requests
 from zipfile import ZipFile
 from requests import Session, Request
 from pluginbase import PluginBase
-from multiprocessing import Process, Queue
+from queue import Queue
+#from multiprocessing import Process, Queue
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
@@ -247,7 +248,10 @@ class Agent(object):
             'policy': {
                 'revision': 0,
                 'uuid': '00000000-0000-0000-0000-000000000000',
-                'roles': []
+                'roles': [],
+                'runner_config': {},
+                'poller_config': {},
+                'detector_config': {}
             }
         }
         self.options = options
@@ -377,7 +381,7 @@ class Agent(object):
                 if 'roles' in self.config['policy']:
                     if len(self.config['policy']['roles']) > 0:
                         self.config['roles'] = self.config['policy']['roles']
-                        
+
                 if 'health_check_interval' in self.config['policy']:
                     self.health_check_interval = self.config['policy']['health_check_interval']
 
@@ -468,7 +472,7 @@ class Agent(object):
                 
             self.logger.info('Agent is healthy')
 
-        data = {'healthy': self.healthy, 'health_issues': self.health_issues, 'recovered': recovered}
+        data = {'healthy': self.healthy, 'health_issues': self.health_issues, 'recovered': recovered, 'version': self.VERSION_NUMBER}
 
         response = self.call_mgmt_api('agent/heartbeat/{}'.format(self.uuid), method='POST', data=data)
         if response and response.status_code == 200:
@@ -620,7 +624,7 @@ class Agent(object):
 
 
 
-    #@retry(delay=30)
+    @retry(delay=30)
     def pair(self):
         '''
         Pairs an agent with the console, this only needs to be run

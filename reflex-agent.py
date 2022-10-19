@@ -101,18 +101,15 @@ if __name__ == "__main__":
     }
 
     logging.info('Running agent')
-
-    restart_roles = False
    
     while True:
 
+        restart_roles = False
         old_revision = agent.config['policy']['revision']
         policy_uuid = agent.config['policy']['uuid']
         agent.get_config()
         if agent.config['policy']['revision'] != old_revision or agent.config['policy']['uuid'] != policy_uuid:
             restart_roles = True
-        else:
-            restart_roles = False
 
         if agent.config:
 
@@ -122,14 +119,19 @@ if __name__ == "__main__":
                 #'poller': Poller,
             }
 
-            if restart_roles:
-                logging.info(f"Agent policy updated, restarting all roles with new configuration values")
-                for role in role_processes:
-                    if role_processes[role]:
-                        logging.info(f"Stopping {role} role")
-                        role_processes[role].join()
-                        role_processes[role].terminate()
-                        role_processes[role] = None
+            role_configs = {
+                'runner': agent.config['policy']['runner_config'],
+                'detector': agent.config['policy']['detector_config']
+            }
+
+            #if restart_roles:
+            #    logging.info(f"Agent policy updated, restarting all roles with new configuration values")
+            #    for role in role_processes:
+            #        if role_processes[role]:
+            #            logging.info(f"Stopping {role} role")
+            #            #role_processes[role].join()
+            #            #role_processes[role].terminate()
+            #            #role_processes[role] = None
 
             if agent.config['roles']:
                 for role in agent_roles:
@@ -137,7 +139,7 @@ if __name__ == "__main__":
 
                         # Start up the role process
                         logging.info(f"Agent is a {role}, spawning {role} role")
-                        role_processes[role] = agent_roles[role]({}, agent=agent)
+                        role_processes[role] = agent_roles[role](config=role_configs[role], agent=agent)
                         role_processes[role].start()
 
                         # Set the role as healthy
@@ -149,7 +151,7 @@ if __name__ == "__main__":
                         logging.info(f"Checking {role} module status")
                         if not role_processes[role].is_alive():
                             logging.info(f"{role} module has is dead, restarting {role} role")
-                            role_processes[role] = agent_roles[role]({}, agent=agent)
+                            role_processes[role] = agent_roles[role](config=role_configs[role], agent=agent)
                             role_processes[role].start()
                             agent.role_health[role] = 1
                         else:
@@ -160,7 +162,7 @@ if __name__ == "__main__":
                     elif not role in agent.config['roles'] and role_processes[role]:
                         logging.info(f"Agent is no longer a {role}, stopping {role} role")
                         role_processes[role].terminate()
-                        role_processes[role].join()                        
+                        role_processes[role].join()
                         agent.role_health[role] = 0
                         role_processes[role] = None                    
 
@@ -212,11 +214,10 @@ if __name__ == "__main__":
                 for role in role_processes:
                     if role_processes[role]:
                         logging.info(f"Agent is no longer a {role}, stopping {role} role")
-                        
                         role_processes[role].terminate()
                         role_processes[role].join(1)
                         role_processes[role] = None
-
+                        
 
         agent.heartbeat()
         logging.info('Agent sleeping for {} seconds'.format(agent.health_check_interval))        

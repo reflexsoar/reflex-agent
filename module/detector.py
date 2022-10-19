@@ -86,15 +86,15 @@ class Detector(Process):
         super(Detector, self).__init__(*args, **kwargs)
 
         # Establish a basic configuration
-        if 'detector' in config:
-            self.config = config['detector']
+        if config:
+            self.config = config
         else:
             self.config = {
                 'concurrent_rules': 10,
                 'graceful_exit': False,
                 'catchup_period': 1440,
                 'wait_interval': 30,
-                'max_threshold_events': agent.options.max_threshold_events
+                'max_threshold_events': 1000
             }
 
         self.running = True
@@ -118,6 +118,7 @@ class Detector(Process):
         self.credentials = {}
         self.detection_rules = [] 
         #self.graceful_shutdown = self.config['graceful_shutdown']
+        
 
     def extract_fields(self, props):
         '''
@@ -925,6 +926,7 @@ class Detector(Process):
         """
         while self.running:
             self.logger.info('Fetching detections')
+            self.logger.info(f"{self.config} - {self.pid}")
             self.load_detections()
             self.run_rules()
             self.update_input_mappings()
