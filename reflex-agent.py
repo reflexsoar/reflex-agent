@@ -127,7 +127,7 @@ if __name__ == "__main__":
                 for role in role_processes:
                     if role_processes[role]:
                         logging.info(f"Stopping {role} role")
-                        role_processes[role].join(1)
+                        role_processes[role].join()
                         role_processes[role].terminate()
                         role_processes[role] = None
 
@@ -160,7 +160,7 @@ if __name__ == "__main__":
                     elif not role in agent.config['roles'] and role_processes[role]:
                         logging.info(f"Agent is no longer a {role}, stopping {role} role")
                         role_processes[role].terminate()
-                        role_processes[role].join(1)                        
+                        role_processes[role].join()                        
                         agent.role_health[role] = 0
                         role_processes[role] = None                    
 
