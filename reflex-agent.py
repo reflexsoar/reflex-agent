@@ -120,18 +120,18 @@ if __name__ == "__main__":
             }
 
             role_configs = {
-                'runner': agent.config['policy']['runner_config'],
-                'detector': agent.config['policy']['detector_config']
+                'runner': agent.config['policy'].get('runner_config', None),
+                'detector': agent.config['policy'].get('detector_config', None)
             }
 
-            #if restart_roles:
-            #    logging.info(f"Agent policy updated, restarting all roles with new configuration values")
-            #    for role in role_processes:
-            #        if role_processes[role]:
-            #            logging.info(f"Stopping {role} role")
-            #            #role_processes[role].join()
-            #            #role_processes[role].terminate()
-            #            #role_processes[role] = None
+            if restart_roles:
+                logging.info(f"Agent policy updated, restarting all roles with new configuration values")
+                for role in role_processes:
+                    if role_processes[role]:
+                        logging.info(f"Stopping {role} role")
+                        role_processes[role].terminate()
+                        role_processes[role].join()
+                        role_processes[role] = None
 
             if agent.config['roles']:
                 for role in agent_roles:
@@ -217,7 +217,7 @@ if __name__ == "__main__":
                         role_processes[role].terminate()
                         role_processes[role].join(1)
                         role_processes[role] = None
-                        
+
 
         agent.heartbeat()
         logging.info('Agent sleeping for {} seconds'.format(agent.health_check_interval))        
