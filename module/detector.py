@@ -4,7 +4,7 @@ import time
 import logging
 import datetime
 from dateutil import parser as date_parser
-from multiprocessing import Process
+from multiprocessing import Process, Event
 from multiprocessing.pool import ThreadPool
 from utils.base import JSONSerializable
 from utils.elasticsearch import Elastic
@@ -86,15 +86,15 @@ class Detector(Process):
         super(Detector, self).__init__(*args, **kwargs)
 
         # Establish a basic configuration
-        if 'detector' in config:
-            self.config = config['detector']
+        if config:
+            self.config = config
         else:
             self.config = {
                 'concurrent_rules': 10,
                 'graceful_exit': False,
                 'catchup_period': 1440,
                 'wait_interval': 30,
-                'max_threshold_events': agent.options.max_threshold_events
+                'max_threshold_events': 1000
             }
 
         self.running = True
@@ -117,7 +117,15 @@ class Detector(Process):
         self.inputs = {}
         self.credentials = {}
         self.detection_rules = [] 
-        #self.graceful_shutdown = self.config['graceful_shutdown']
+        self.should_exit = Event()
+
+
+    def exit(self):
+        '''
+        Shuts down the detector
+        '''
+        self.should_exit.set()
+        
 
     def extract_fields(self, props):
         '''
@@ -841,7 +849,7 @@ class Detector(Process):
                         # Update all the docs to have detection rule hard values
                         for doc in docs:
                             doc.description = getattr(detection, 'description', 'No description provided')
-                            doc.tags += getattr(detection,'tags',[])
+                            doc.tags += getattr(detection,'tags',[]) or []
                             doc.severity = getattr(detection, 'severity', 1)
                             doc.detection_id = getattr(detection, 'uuid', None)
 
@@ -923,10 +931,18 @@ class Detector(Process):
         """
         Periodically runs detection rules as defined by the ReflexSOAR API
         """
-        while self.running:
+        self.logger.info('Starting detection agent')
+        while self.running:            
+
             self.logger.info('Fetching detections')
+            self.logger.info(f"{self.config} - {self.pid}")
             self.load_detections()
             self.run_rules()
             self.update_input_mappings()
             self.logger.info('Run complete, waiting')
+
+            if self.should_exit.is_set():
+                self.logger.info('Shutting down')
+                break
+
             time.sleep(self.config['wait_interval'])
