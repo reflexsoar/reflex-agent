@@ -6,12 +6,14 @@ on:
     branches:
       - 'main'
       - 'dev'
+      - 'smapper-docker-gh-action'
     tags:
       - '*'
   pull_request:
     branches:
       - 'main'
       - 'dev'
+      - 'smapper-docker-gh-action'
 
 # permissions are needed if pushing to ghcr.io
 permissions: 
