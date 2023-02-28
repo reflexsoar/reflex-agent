@@ -384,6 +384,7 @@ class Detector(Process):
                 return value != target
             return False
         except TypeError as e:
+            self.logger.error(f"Error comparing values: {e}")
             return False
 
 
@@ -410,7 +411,6 @@ class Detector(Process):
             },
             "size": 0        
         }
-
 
         # If there are exclusions/exceptions add them to the query
         if hasattr(detection, 'exceptions') and detection.exceptions != None:
@@ -446,6 +446,8 @@ class Detector(Process):
                     "gte": "now-{}d".format(detection.new_terms_config['window_size']),
                     "lte": "now-{}m".format(detection.lookbehind)}}}
             ]
+        
+        print(json.dumps(query, indent=4, sort_keys=True))
 
         docs = []
         query_time = 0
@@ -458,6 +460,8 @@ class Detector(Process):
         if res:
             query_time += res['took']
             old_terms = [term["key"] for term in res["aggregations"][detection.new_terms_config['key_field']]["buckets"]]
+
+        print(old_terms)
 
         query["query"]["bool"]["must"] = [{
             "query_string": {
@@ -486,6 +490,8 @@ class Detector(Process):
                 }
             }
         }
+
+        print(json.dumps(query, indent=4, sort_keys=True))
         
         # Search for terms in the poll interval
         res = elastic.conn.search(
@@ -494,7 +500,8 @@ class Detector(Process):
         new_terms = []
         if res:
             query_time += res['took']
-            new_terms = [term["key"] for term in res["aggregations"][detection.new_terms_config['key_field']]["buckets"]]
+            if res["aggregations"][detection.new_terms_config['key_field']]["buckets"]:
+                new_terms = [term["key"] for term in res["aggregations"][detection.new_terms_config['key_field']]["buckets"]]
         
         # Calculate the difference between the old and new terms
         net_new_terms = [term for term in new_terms if term not in old_terms]
@@ -847,11 +854,12 @@ class Detector(Process):
                             f"{detection.name} ({detection.uuid}) - Total Hits {len(docs)}")
 
                         # Update all the docs to have detection rule hard values
-                        for doc in docs:
-                            doc.description = getattr(detection, 'description', 'No description provided')
-                            doc.tags += getattr(detection,'tags',[]) or []
-                            doc.severity = getattr(detection, 'severity', 1)
-                            doc.detection_id = getattr(detection, 'uuid', None)
+                        if docs:
+                            for doc in docs:
+                                doc.description = getattr(detection, 'description', 'No description provided')
+                                doc.tags += getattr(detection,'tags',[]) or []
+                                doc.severity = getattr(detection, 'severity', 1)
+                                doc.detection_id = getattr(detection, 'uuid', None)
 
                         update_payload = {
                             'last_run': detection.last_run,
