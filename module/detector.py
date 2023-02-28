@@ -1,3 +1,4 @@
+import traceback
 import json
 import math
 import time
@@ -93,7 +94,7 @@ class Detector(Process):
                 'concurrent_rules': 10,
                 'graceful_exit': False,
                 'catchup_period': 1440,
-                'wait_interval': 30,
+                'wait_interval': 10,
                 'max_threshold_events': 1000
             }
 
@@ -118,6 +119,29 @@ class Detector(Process):
         self.credentials = {}
         self.detection_rules = [] 
         self.should_exit = Event()
+        self.new_term_state_table = {}
+
+
+    def set_new_term_state_entry(self, detection_id, field, terms):
+        '''
+        Sets the new term state table entry for a detection rule
+        '''
+        if detection_id not in self.new_term_state_table:
+            self.new_term_state_table[detection_id] = {}
+        if field not in self.new_term_state_table[detection_id]:
+            self.new_term_state_table[detection_id][field] = terms
+        else:
+            self.new_term_state_table[detection_id][field].extend(terms)
+            self.new_term_state_table[detection_id][field] = list(set(self.new_term_state_table[detection_id][field]))
+
+
+    def get_new_term_state_entry(self, detection_id, field):
+        '''
+        Returns the new term state table entry for a detection rule
+        '''
+        if detection_id in self.new_term_state_table and field in self.new_term_state_table[detection_id]:
+            return self.new_term_state_table[detection_id][field]
+        return []
 
 
     def exit(self):
@@ -293,7 +317,7 @@ class Detector(Process):
         for doc in docs:
 
             doc.description = getattr(detection, 'description', 'No description provided')
-            doc.tags += getattr(detection,'tags',[])
+            doc.tags += getattr(detection,'tags',[]) or []
             doc.severity = getattr(detection, 'severity', 1)
             doc.detection_id = getattr(detection, 'uuid', None)
 
@@ -400,7 +424,105 @@ class Detector(Process):
         # Create a connection to Elasticsearch
         elastic = Elastic(
             _input['config'], _input['field_mapping'], credential)
+        
+        query_time = 0
+        docs = []
+        old_terms = self.get_new_term_state_entry(detection.uuid, detection.new_terms_config['key_field'])
 
+        if old_terms == []:
+            self.logger.info(f"New terms rule {detection.uuid} has no previous terms, running a full query")
+        
+            query = {
+                "query": {
+                    "bool": {
+                        "must": [
+                            
+                        ]
+                    }
+                },
+                "size": 0
+            }
+
+            # If there are exclusions/exceptions add them to the query
+            if hasattr(detection, 'exceptions') and detection.exceptions != None:
+                query["query"]["bool"]["must_not"] = []
+                for exception in detection.exceptions:
+                    
+                    query["query"]["bool"]["must_not"].append(
+                        {
+                            "terms": {
+                                f"{exception['field']}": exception['values']
+                            }
+                        }
+                    )
+
+            # Set the time window
+            # Set the time range for the old terms query
+            query["query"]["bool"]["must"] = [{
+                "query_string": {
+                        "query": detection.query['query']
+                        }
+                    },
+                {"range": {
+                    "@timestamp": {
+                        "gte": "now-{}d".format(detection.new_terms_config['window_size']),
+                        "lte": "now"}}}
+                ]
+
+            # Determine how many terms actually exist for the query and 
+            # if they exceed max_terms disable the rule
+            query["aggs"] = {
+                detection.new_terms_config['key_field']: {
+                    'cardinality': {
+                        'field': detection.new_terms_config['key_field']
+                    }
+                }
+            }
+
+            res = elastic.conn.search(
+                index=_input['config']['index'], body=query)
+            
+            if res:
+                cardinality = res['aggregations'][detection.new_terms_config['key_field']]['value']
+                if cardinality > detection.new_terms_config['max_terms']:
+                    self.logger.error(f"New terms rule {detection.uuid} has {cardinality} terms, which exceeds the maximum of {detection.new_terms_config['max_terms']}")
+                    update_payload = {
+                        'active': False,
+                    }
+                    if detection.warnings:
+                        update_payload['warnings'] = detection.warnings
+                        update_payload['warnings'] += 'max_terms_exceeded'
+                    else:
+                        update_payload['warnings'] = 'max_terms_exceeded'
+                    
+                    self.agent.update_detection(detection.uuid, payload=update_payload)
+                    return
+
+            # Aggregate on the field where the terms should be found
+            query["aggs"] = {
+                detection.new_terms_config['key_field']: {
+                    'terms': {
+                        'field': detection.new_terms_config['key_field'],
+                        'size': detection.new_terms_config['max_terms']
+                    }
+                }
+            }
+
+            # Search for terms in the window
+            res = elastic.conn.search(
+                                index=_input['config']['index'], body=query)
+
+            if res:
+                query_time += res['took']
+                old_terms = [term["key"] for term in res["aggregations"][detection.new_terms_config['key_field']]["buckets"]]
+
+                self.set_new_term_state_entry(detection.uuid, detection.new_terms_config['key_field'], old_terms)
+
+        # If there are no old terms, there is nothing to compare against so skip
+        if old_terms == None:
+            self.logger.info(f"New terms rule {detection.uuid} has no previous terms, skipping")
+            return
+        
         query = {
             "query": {
                 "bool": {
@@ -409,59 +531,8 @@ class Detector(Process):
                     ]
                 }
             },
-            "size": 0        
+            "size": 0
         }
-
-        # If there are exclusions/exceptions add them to the query
-        if hasattr(detection, 'exceptions') and detection.exceptions != None:
-            query["query"]["bool"]["must_not"] = []
-            for exception in detection.exceptions:
-                
-                query["query"]["bool"]["must_not"].append(
-                    {
-                        "terms": {
-                            f"{exception['field']}": exception['values']
-                        }
-                    }
-                )
-
-        # Aggregate on the field where the terms should be found
-        query["aggs"] = {
-            detection.new_terms_config['key_field']: {
-                'terms': {
-                    'field': detection.new_terms_config['key_field'],
-                    'size': detection.new_terms_config['max_terms']
-                }
-            }
-        }
-
-        # Set the time range for the old terms query
-        query["query"]["bool"]["must"] = [{
-            "query_string": {
-                    "query": detection.query['query']
-                    }
-                },
-            {"range": {
-                "@timestamp": {
-                    "gte": "now-{}d".format(detection.new_terms_config['window_size']),
-                    "lte": "now-{}m".format(detection.lookbehind)}}}
-            ]
-        
-        print(json.dumps(query, indent=4, sort_keys=True))
-
-        docs = []
-        query_time = 0
-
-        # Search for terms in the window
-        res = elastic.conn.search(
-                            index=_input['config']['index'], body=query)
-
-        old_terms = []
-        if res:
-            query_time += res['took']
-            old_terms = [term["key"] for term in res["aggregations"][detection.new_terms_config['key_field']]["buckets"]]
-
-        print(old_terms)
 
         query["query"]["bool"]["must"] = [{
             "query_string": {
@@ -490,8 +561,6 @@ class Detector(Process):
                 }
             }
         }
-
-        print(json.dumps(query, indent=4, sort_keys=True))
         
         # Search for terms in the poll interval
         res = elastic.conn.search(
@@ -505,20 +574,24 @@ class Detector(Process):
         
         # Calculate the difference between the old and new terms
         net_new_terms = [term for term in new_terms if term not in old_terms]
-        print(net_new_terms)
+
         if net_new_terms:
+            self.set_new_term_state_entry(detection.uuid, detection.new_terms_config['key_field'], new_terms)
             for term in res["aggregations"][detection.new_terms_config['key_field']]["buckets"]:
                 if term["key"] in net_new_terms:
                     docs += term["doc"]["hits"]["hits"]
 
-        docs = elastic.parse_events(docs
-            , title=detection.name, signature_values=[detection.detection_id], risk_score=detection.risk_score)
+        if len(docs) > 0:
+            docs = elastic.parse_events(docs
+                , title=detection.name, signature_values=[detection.detection_id], risk_score=detection.risk_score)
 
-        for doc in docs:
-            doc.description = getattr(detection, 'description', 'No description provided')
-            doc.tags += getattr(detection,'tags',[])
-            doc.severity = getattr(detection, 'severity', 1)
-            doc.detection_id = getattr(detection, 'uuid', None)
+            for doc in docs:
+                doc.description = getattr(detection, 'description', 'No description provided') or 'No description provided'
+
+                doc.tags += getattr(detection, 'tags') or []
+                
+                doc.severity = getattr(detection, 'severity', 1) or 1
+                doc.detection_id = getattr(detection, 'uuid', None) or None
 
         update_payload = {
             'last_run': detection.last_run,
