@@ -456,6 +456,8 @@ class Agent(object):
         the agent as well as the current health of the agent
         '''
 
+        print("Sending heartbeat to API")
+
         recovered = False
 
         if any([self.role_health[role] == 1 for role in self.role_health]):
@@ -473,6 +475,7 @@ class Agent(object):
             self.logger.info('Agent is healthy')
 
         data = {'healthy': self.healthy, 'health_issues': self.health_issues, 'recovered': recovered, 'version': self.VERSION_NUMBER}
+        
 
         response = self.call_mgmt_api('agent/heartbeat/{}'.format(self.uuid), method='POST', data=data)
         if response and response.status_code == 200:
