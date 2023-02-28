@@ -384,6 +384,7 @@ class Detector(Process):
                 return value != target
             return False
         except TypeError as e:
+            self.logger.error(f"Error comparing values: {e}")
             return False
 
 

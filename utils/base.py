@@ -279,6 +279,7 @@ class Agent(object):
             s.connect(('10.255.255.255', 1))
             IP = s.getsockname()[0]
         except Exception:
+            self.logger.error("Unable to determine IP address")
             IP = '127.0.0.1'
         finally:
             s.close()
