@@ -9,6 +9,7 @@ from multiprocessing import Process, Event
 from multiprocessing.pool import ThreadPool
 from utils.base import JSONSerializable
 from utils.elasticsearch import Elastic
+from utils.indexed_dict import IndexedDict
 
 
 class Detection(JSONSerializable):
@@ -149,7 +150,26 @@ class Detector(Process):
         Shuts down the detector
         '''
         self.should_exit.set()
-        
+
+    
+    def extract_fields_from_indexed_dict(self, props):
+
+        field_dict = IndexedDict(props)
+
+        fields = []
+
+        for field in field_dict:
+            field = field.replace('.properties', '')
+            if field.endswith('.type'):
+                field = field.replace('.type', '')
+            if field.endswith('.ignore_above'):
+                continue
+            if field.endswith('.norms'):
+                continue
+            field = field.replace('.fields', '')
+            fields.append(field)
+
+        return fields
 
     def extract_fields(self, props):
         '''
@@ -211,7 +231,7 @@ class Detector(Process):
                         props = field_mappings[index]['mappings']['properties']
 
                         # Flatten the field names
-                        fields += self.extract_fields(props)
+                        fields += self.extract_fields_from_indexed_dict(props)
 
                     # Create a unique, sorted list of field names
                     fields = sorted(list(set(fields)))
