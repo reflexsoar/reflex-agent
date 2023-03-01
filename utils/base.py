@@ -336,6 +336,17 @@ class Agent(object):
         except Exception as e:
             self.logger.error("An error occured while trying to connect to the management API. {}".format(str(e)))
             return None
+        
+    def get_list_values(self, uuid):
+
+        # Fetch the list values
+        response = self.call_mgmt_api(f'list/values?list={uuid}&page_size=10000')
+        if response and response.status_code == 200:
+            return [v['value'] for v in response.json()['values']]
+        else:
+            if response:
+                self.logger.error('Failed to get list values from management API. {}'.format(response.content))
+            return []
 
 
     def fetch_credentials(self, uuid):

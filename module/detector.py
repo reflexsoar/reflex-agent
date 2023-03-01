@@ -467,6 +467,11 @@ class Detector(Process):
             if hasattr(detection, 'exceptions') and detection.exceptions != None:
                 query["query"]["bool"]["must_not"] = []
                 for exception in detection.exceptions:
+
+                    if 'list' in exception and exception['list']['uuid'] != None:
+                        list_values = self.agent.get_list_values(
+                            exception['list']['uuid'])
+                        exception['values'] = list_values
                     
                     query["query"]["bool"]["must_not"].append(
                         {
@@ -679,6 +684,11 @@ class Detector(Process):
         if hasattr(detection, 'exceptions') and detection.exceptions != None:
             query["query"]["bool"]["must_not"] = []
             for exception in detection.exceptions:
+
+                if 'list' in exception and exception['list']['uuid'] != None:
+                    list_values = self.agent.get_list_values(
+                        exception['list']['uuid'])
+                    exception['values'] = list_values
                 
                 query["query"]["bool"]["must_not"].append(
                     {
@@ -900,6 +910,11 @@ class Detector(Process):
                         if hasattr(detection, 'exceptions') and detection.exceptions != None:
                             query["query"]["bool"]["must_not"] = []
                             for exception in detection.exceptions:
+
+                                if 'list' in exception and exception['list']['uuid'] != None:
+                                    list_values = self.agent.get_list_values(
+                                        exception['list']['uuid'])
+                                    exception['values'] = list_values
                                 
                                 query["query"]["bool"]["must_not"].append(
                                     {
