@@ -8,6 +8,7 @@ import base64
 import chevron
 import logging
 import hashlib
+import ipaddress
 
 from .base import Event
 
@@ -83,6 +84,10 @@ class Elastic(Process):
         observables = []
         for field in self.field_mapping['fields']:
 
+            # Skip fields that don't have an associated data type
+            if field['data_type'] == 'none':
+                continue
+
             if 'ioc' not in field:
                 field['ioc'] = False
 
@@ -97,6 +102,15 @@ class Elastic(Process):
                 tags += field['tags']
 
             value = self.get_nested_field(source, field['field'])
+
+            # Check to make sure the value isn't actually an IP address
+            # if it is, change the data type to ip
+            try:
+                i = ipaddress.ip_address(value)
+                if isinstance(i, (ipaddress.IPv4Address, ipaddress.IPv6Address)):
+                    field['data_type'] = 'ip'
+            except:
+                pass
 
             source_field = field['field']
             original_source_field = field['field']
