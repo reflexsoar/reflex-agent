@@ -14,7 +14,7 @@ from .base import Event
 
 class Elastic(Process):
 
-    def __init__(self, config, field_mapping, credentials):
+    def __init__(self, config, field_mapping, credentials, signature_fields=[]):
         ''' 
         Initializes a new Elasticsearch poller object
         which pushes information to the api
@@ -25,6 +25,14 @@ class Elastic(Process):
         self.field_mapping = field_mapping
         self.conn = self.build_es_connection()
         self.plugin_type = 'events'
+        self.signature_fields = []
+
+        # If signature_fields are passed in, use them instead of the ones in the config file
+        if signature_fields:
+            self.signature_fields = signature_fields
+        else:
+            if 'signature_fields' in config:
+                self.signature_fields = config['signature_fields']
 
     
     def build_es_connection(self):
@@ -34,7 +42,10 @@ class Elastic(Process):
         '''
 
         # Create an empty configuration object
-        es_config = {            
+        es_config = {   
+            'retry_on_timeout': True,
+            'timeout': 30,
+            'max_retries': 3        
         }
 
         # If we are defining a ca_file use ssl_contexts with the ca_file
@@ -82,7 +93,7 @@ class Elastic(Process):
         '''
         
         observables = []
-        for field in self.field_mapping['fields']:
+        for field in self.field_mapping:
 
             # Skip fields that don't have an associated data type
             if field['data_type'] == 'none':
@@ -103,12 +114,14 @@ class Elastic(Process):
 
             value = self.get_nested_field(source, field['field'])
 
+            
+            data_type = field['data_type']
             # Check to make sure the value isn't actually an IP address
             # if it is, change the data type to ip
             try:
                 i = ipaddress.ip_address(value)
                 if isinstance(i, (ipaddress.IPv4Address, ipaddress.IPv6Address)):
-                    field['data_type'] = 'ip'
+                    data_type = 'ip'
             except:
                 pass
 
@@ -125,7 +138,7 @@ class Elastic(Process):
                     for item in value:
                         observables += [{
                             "value":str(item),
-                            "data_type":field['data_type'],
+                            "data_type":data_type,
                             "tlp":field['tlp'],
                             "ioc": field['ioc'],
                             "safe": field['safe'],
@@ -137,7 +150,7 @@ class Elastic(Process):
                 else:
                     observables += [{
                         "value":str(value),
-                        "data_type":field['data_type'],
+                        "data_type":data_type,
                         "tlp":field['tlp'],
                         "ioc": field['ioc'],
                         "safe": field['safe'],
@@ -195,7 +208,7 @@ class Elastic(Process):
                     event.tags += [self.config['static_tags']]
 
             if 'signature_fields' in self.config:
-                event.generate_signature(source=source, fields=self.config['signature_fields'], signature_values=_sig_values)
+                event.generate_signature(source=source, fields=self.signature_fields, signature_values=_sig_values)
             else:
                 event.generate_signature(source=source, signature_values=_sig_values)
 
@@ -230,13 +243,13 @@ class Elastic(Process):
                             "bool": { 
                                 "must": [
                                         {"query_string": { "query": self.config['lucene_filter'] }},
-                                        {"range": {"@timestamp": {"gt": "now-{}".format(self.config['search_period'])}}}
+                                        {"range": {"@timestamp": {"gte": "now-{}".format(self.config['search_period'])}}}
                                     ]
                                 }
                         },
                         "size": self.config['search_size']}
             else:
-                body = {"query": {"range": {"@timestamp": {"gt": "now-{}".format(self.config['search_period'])}}}, "size":self.config['search_size']}
+                body = {"query": {"range": {"@timestamp": {"gte": "now-{}".format(self.config['search_period'])}}}, "size":self.config['search_size']}
             res = self.conn.search(index=str(self.config['index']), body=body, scroll='2m') # TODO: Move scroll time to config
 
             scroll_id = res['_scroll_id']

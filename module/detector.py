@@ -843,6 +843,39 @@ class Detector(Process):
 
         input_uuid = detection.source['uuid']
 
+        # Grab the field settings for the detection so we can use them to build the query
+        # and parse the results
+        # TODO: This should be cached in the agent for a period of time
+        self.logger.info(f"Fetching field settings for {detection.name}")
+        response = self.agent.call_mgmt_api(
+            f"detection/{detection.uuid}/field_settings")
+        
+        signature_fields = []
+        field_mapping = []
+
+        """Call the API to fetch the expected field settings for this detection which includes
+        the fields to extract as observables and the fields to use as signature fields
+        If the API call fails, skip the detection run entirely and log an error
+        If the API call succeeds but the response is not valid JSON, skip the detection run
+        If the result of the API call is empty signature fields or fields default to using the
+        defaults from the input
+        """        
+        if response.status_code == 200:
+            try:
+                field_settings = response.json()
+                if 'signature_fields' in field_settings and len(field_settings['signature_fields']) > 0:
+                    signature_fields = field_settings['signature_fields']
+                if 'fields' in field_settings and len(field_settings['fields']) > 0:
+                    field_mapping = field_settings['fields']
+            except:
+                self.logger.error(
+                    f"Failed to parse field settings for {detection.name}")
+                return
+        else:
+            self.logger.error(
+                f"Failed to fetch field settings for {detection.name}")
+            return
+
         # Get the input or report an error if the agent doesn't know it
         if input_uuid in self.inputs:
             _input = self.inputs[input_uuid]
@@ -850,6 +883,12 @@ class Detector(Process):
             # TODO: Add a call to insert a reflex-detections-log record
             self.logger.error(
                 f"Detection {detection.name} attempted to use source {input_uuid} but no input found")
+
+        # If the length of signature fields or field_mapping is 0 use the settings from the input
+        if len(signature_fields) == 0:
+            signature_fields = _input['config']['signature_fields']
+        if len(field_mapping) == 0:
+            field_mapping = _input['config']['fields']
 
         # Get the credential or report an error if the agent doesn't know it
         if _input['credential'] in self.credentials:
@@ -874,7 +913,11 @@ class Detector(Process):
 
                     # Create a connection to Elasticsearch
                     elastic = Elastic(
-                        _input['config'], _input['field_mapping'], credential)
+                        _input['config'],
+                        field_mapping=field_mapping,
+                        credentials=credential,
+                        signature_fields=signature_fields
+                    )
 
                     rule_types = {
                         0: self.match_rule,
