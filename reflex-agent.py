@@ -187,7 +187,7 @@ if __name__ == "__main__":
 
                             if i['plugin'] == "Elasticsearch":
 
-                                e = Elastic(i['config'], i['field_mapping'], credentials)
+                                e = Elastic(i['config'], i['field_mapping'], credentials, input_uuid=i['uuid'])
                                 events = e.run()
 
                                 agent.process_events(events, agent.options.skip_cache_check)

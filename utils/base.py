@@ -92,6 +92,11 @@ class Event(JSONSerializable):
         self.signature = ""
         self.detection_id = None
         self.risk_score = None
+        self.input_uuid = None
+        self.metrics = {
+            'agent_pickup_time': None,
+            'agent_bulk_start': None,
+        }
 
 
     def get_nested_field(self, message, field):
@@ -468,7 +473,7 @@ class Agent(object):
         the agent as well as the current health of the agent
         '''
 
-        print("Sending heartbeat to API")
+        self.logger.info("Sending heartbeat to API")
 
         recovered = False
 
@@ -578,14 +583,17 @@ class Agent(object):
 
                 if events is None:
                   break
-                  
-                payload = {
-                    'events': []
-                }
-                
-                [payload['events'].append(json.loads(e.jsonify())) for e in events]
 
                 if len(events) > 0:
+                    payload = {
+                        'events': []
+                    }
+
+                    bulk_start = datetime.datetime.utcnow().isoformat()
+                    for event in events:
+                        event.metrics['agent_bulk_start'] = bulk_start
+                        payload['events'].append(json.loads(event.jsonify()))
+                                                 
                     # TODO: FIX LOGGING
                     self.logger.info('Pushing %s events to bulk ingest...' % len(events))
                 

@@ -340,6 +340,7 @@ class Detector(Process):
             doc.tags += getattr(detection,'tags',[]) or []
             doc.severity = getattr(detection, 'severity', 1)
             doc.detection_id = getattr(detection, 'uuid', None)
+            doc.input_uuid = _input['uuid']
 
             hit = False
             operator = detection.field_mismatch_config['operator']
@@ -612,11 +613,10 @@ class Detector(Process):
 
             for doc in docs:
                 doc.description = getattr(detection, 'description', 'No description provided') or 'No description provided'
-
                 doc.tags += getattr(detection, 'tags') or []
-                
                 doc.severity = getattr(detection, 'severity', 1) or 1
                 doc.detection_id = getattr(detection, 'uuid', None) or None
+                doc.input_uuid = _input['uuid']
 
         update_payload = {
             'last_run': detection.last_run,
@@ -763,6 +763,7 @@ class Detector(Process):
             doc.tags += getattr(detection,'tags',[])
             doc.severity = getattr(detection, 'severity', 1)
             doc.detection_id = getattr(detection, 'uuid', None)
+            doc.input_uuid = _input['uuid']
 
         update_payload = {
             'last_run': detection.last_run,
@@ -866,7 +867,7 @@ class Detector(Process):
                 if 'signature_fields' in field_settings and len(field_settings['signature_fields']) > 0:
                     signature_fields = field_settings['signature_fields']
                 if 'fields' in field_settings and len(field_settings['fields']) > 0:
-                    field_mapping = field_settings['fields']
+                    field_mapping = field_settings
             except:
                 self.logger.error(
                     f"Failed to parse field settings for {detection.name}")
@@ -1011,6 +1012,7 @@ class Detector(Process):
                                 doc.tags += getattr(detection,'tags',[]) or []
                                 doc.severity = getattr(detection, 'severity', 1)
                                 doc.detection_id = getattr(detection, 'uuid', None)
+                                doc.input_uuid = _input['uuid']
 
                         update_payload = {
                             'last_run': detection.last_run,
@@ -1094,7 +1096,6 @@ class Detector(Process):
         while self.running:            
 
             self.logger.info('Fetching detections')
-            self.logger.info(f"{self.config} - {self.pid}")
             self.load_detections()
             self.run_rules()
             self.update_input_mappings()

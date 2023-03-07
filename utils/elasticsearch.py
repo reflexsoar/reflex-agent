@@ -1,4 +1,5 @@
 import copy
+import datetime
 from elasticsearch import Elasticsearch
 from multiprocessing import Process
 from retry import retry
@@ -14,11 +15,12 @@ from .base import Event
 
 class Elastic(Process):
 
-    def __init__(self, config, field_mapping, credentials, signature_fields=[]):
+    def __init__(self, config, field_mapping, credentials, signature_fields=[], input_uuid=None):
         ''' 
         Initializes a new Elasticsearch poller object
         which pushes information to the api
         '''
+
         self.config = config
         self.status = 'waiting'
         self.credentials = credentials
@@ -26,6 +28,7 @@ class Elastic(Process):
         self.conn = self.build_es_connection()
         self.plugin_type = 'events'
         self.signature_fields = []
+        self.input_uuid = input_uuid
 
         # If signature_fields are passed in, use them instead of the ones in the config file
         if signature_fields:
@@ -45,7 +48,8 @@ class Elastic(Process):
         es_config = {   
             'retry_on_timeout': True,
             'timeout': 30,
-            'max_retries': 3        
+            'max_retries': 3,
+            'ssl_show_warn': False
         }
 
         # If we are defining a ca_file use ssl_contexts with the ca_file
@@ -93,7 +97,7 @@ class Elastic(Process):
         '''
         
         observables = []
-        for field in self.field_mapping:
+        for field in self.field_mapping['fields']:
 
             # Skip fields that don't have an associated data type
             if field['data_type'] == 'none':
@@ -405,6 +409,9 @@ class Elastic(Process):
 
         event = Event()
 
+        if hasattr(event, 'metrics'):
+            event.metrics['agent_pickup_time'] = datetime.datetime.utcnow().isoformat()
+
         # Pull the event title unless overridden
         if not title:
             event.title = self.get_nested_field(source, self.config['rule_name'])
@@ -421,6 +428,9 @@ class Elastic(Process):
         for field in ['tlp','type','source']:
             if field in self.config:
                 setattr(event, field, self.config[field])
+
+        # Track the input UUID that generated this event
+        event.input_uuid = self.input_uuid
 
         # Replace the source of the event with the name of the index
         # if the source name was never defined
