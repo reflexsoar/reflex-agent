@@ -1,3 +1,4 @@
+import traceback
 import json
 import math
 import time
@@ -8,6 +9,7 @@ from multiprocessing import Process, Event
 from multiprocessing.pool import ThreadPool
 from utils.base import JSONSerializable
 from utils.elasticsearch import Elastic
+from utils.indexed_dict import IndexedDict
 
 
 class Detection(JSONSerializable):
@@ -93,7 +95,7 @@ class Detector(Process):
                 'concurrent_rules': 10,
                 'graceful_exit': False,
                 'catchup_period': 1440,
-                'wait_interval': 30,
+                'wait_interval': 10,
                 'max_threshold_events': 1000
             }
 
@@ -118,6 +120,29 @@ class Detector(Process):
         self.credentials = {}
         self.detection_rules = [] 
         self.should_exit = Event()
+        self.new_term_state_table = {}
+
+
+    def set_new_term_state_entry(self, detection_id, field, terms):
+        '''
+        Sets the new term state table entry for a detection rule
+        '''
+        if detection_id not in self.new_term_state_table:
+            self.new_term_state_table[detection_id] = {}
+        if field not in self.new_term_state_table[detection_id]:
+            self.new_term_state_table[detection_id][field] = terms
+        else:
+            self.new_term_state_table[detection_id][field].extend(terms)
+            self.new_term_state_table[detection_id][field] = list(set(self.new_term_state_table[detection_id][field]))
+
+
+    def get_new_term_state_entry(self, detection_id, field):
+        '''
+        Returns the new term state table entry for a detection rule
+        '''
+        if detection_id in self.new_term_state_table and field in self.new_term_state_table[detection_id]:
+            return self.new_term_state_table[detection_id][field]
+        return []
 
 
     def exit(self):
@@ -125,7 +150,26 @@ class Detector(Process):
         Shuts down the detector
         '''
         self.should_exit.set()
-        
+
+    
+    def extract_fields_from_indexed_dict(self, props):
+
+        field_dict = IndexedDict(props)
+
+        fields = []
+
+        for field in field_dict:
+            field = field.replace('.properties', '')
+            if field.endswith('.type'):
+                field = field.replace('.type', '')
+            if field.endswith('.ignore_above'):
+                continue
+            if field.endswith('.norms'):
+                continue
+            field = field.replace('.fields', '')
+            fields.append(field)
+
+        return fields
 
     def extract_fields(self, props):
         '''
@@ -187,7 +231,7 @@ class Detector(Process):
                         props = field_mappings[index]['mappings']['properties']
 
                         # Flatten the field names
-                        fields += self.extract_fields(props)
+                        fields += self.extract_fields_from_indexed_dict(props)
 
                     # Create a unique, sorted list of field names
                     fields = sorted(list(set(fields)))
@@ -293,9 +337,10 @@ class Detector(Process):
         for doc in docs:
 
             doc.description = getattr(detection, 'description', 'No description provided')
-            doc.tags += getattr(detection,'tags',[])
+            doc.tags += getattr(detection,'tags',[]) or []
             doc.severity = getattr(detection, 'severity', 1)
             doc.detection_id = getattr(detection, 'uuid', None)
+            doc.input_uuid = _input['uuid']
 
             hit = False
             operator = detection.field_mismatch_config['operator']
@@ -400,7 +445,110 @@ class Detector(Process):
         # Create a connection to Elasticsearch
         elastic = Elastic(
             _input['config'], _input['field_mapping'], credential)
+        
+        query_time = 0
+        docs = []
+        old_terms = self.get_new_term_state_entry(detection.uuid, detection.new_terms_config['key_field'])
 
+        if old_terms == []:
+            self.logger.info(f"New terms rule {detection.uuid} has no previous terms, running a full query")
+        
+            query = {
+                "query": {
+                    "bool": {
+                        "must": [
+                            
+                        ]
+                    }
+                },
+                "size": 0
+            }
+
+            # If there are exclusions/exceptions add them to the query
+            if hasattr(detection, 'exceptions') and detection.exceptions != None:
+                query["query"]["bool"]["must_not"] = []
+                for exception in detection.exceptions:
+
+                    if 'list' in exception and exception['list']['uuid'] != None:
+                        list_values = self.agent.get_list_values(
+                            exception['list']['uuid'])
+                        exception['values'] = list_values
+                    
+                    query["query"]["bool"]["must_not"].append(
+                        {
+                            "terms": {
+                                f"{exception['field']}": exception['values']
+                            }
+                        }
+                    )
+
+            # Set the time window
+            # Set the time range for the old terms query
+            query["query"]["bool"]["must"] = [{
+                "query_string": {
+                        "query": detection.query['query']
+                        }
+                    },
+                {"range": {
+                    "@timestamp": {
+                        "gte": "now-{}d".format(detection.new_terms_config['window_size']),
+                        "lte": "now"}}}
+                ]
+
+            # Determine how many terms actually exist for the query and 
+            # if they exceed max_terms disable the rule
+            query["aggs"] = {
+                detection.new_terms_config['key_field']: {
+                    'cardinality': {
+                        'field': detection.new_terms_config['key_field']
+                    }
+                }
+            }
+
+            res = elastic.conn.search(
+                index=_input['config']['index'], body=query)
+            
+            if res:
+                cardinality = res['aggregations'][detection.new_terms_config['key_field']]['value']
+                if cardinality > detection.new_terms_config['max_terms']:
+                    self.logger.error(f"New terms rule {detection.uuid} has {cardinality} terms, which exceeds the maximum of {detection.new_terms_config['max_terms']}")
+                    update_payload = {
+                        'active': False,
+                    }
+                    if detection.warnings:
+                        update_payload['warnings'] = detection.warnings
+                        update_payload['warnings'] += 'max_terms_exceeded'
+                    else:
+                        update_payload['warnings'] = 'max_terms_exceeded'
+                    
+                    self.agent.update_detection(detection.uuid, payload=update_payload)
+                    return
+
+            # Aggregate on the field where the terms should be found
+            query["aggs"] = {
+                detection.new_terms_config['key_field']: {
+                    'terms': {
+                        'field': detection.new_terms_config['key_field'],
+                        'size': detection.new_terms_config['max_terms']
+                    }
+                }
+            }
+
+            # Search for terms in the window
+            res = elastic.conn.search(
+                                index=_input['config']['index'], body=query)
+
+            if res:
+                query_time += res['took']
+                old_terms = [term["key"] for term in res["aggregations"][detection.new_terms_config['key_field']]["buckets"]]
+
+                self.set_new_term_state_entry(detection.uuid, detection.new_terms_config['key_field'], old_terms)
+
+        # If there are no old terms, there is nothing to compare against so skip
+        if old_terms == None:
+            self.logger.info(f"New terms rule {detection.uuid} has no previous terms, skipping")
+            return
+        
         query = {
             "query": {
                 "bool": {
@@ -409,59 +557,8 @@ class Detector(Process):
                     ]
                 }
             },
-            "size": 0        
+            "size": 0
         }
-
-        # If there are exclusions/exceptions add them to the query
-        if hasattr(detection, 'exceptions') and detection.exceptions != None:
-            query["query"]["bool"]["must_not"] = []
-            for exception in detection.exceptions:
-                
-                query["query"]["bool"]["must_not"].append(
-                    {
-                        "terms": {
-                            f"{exception['field']}": exception['values']
-                        }
-                    }
-                )
-
-        # Aggregate on the field where the terms should be found
-        query["aggs"] = {
-            detection.new_terms_config['key_field']: {
-                'terms': {
-                    'field': detection.new_terms_config['key_field'],
-                    'size': detection.new_terms_config['max_terms']
-                }
-            }
-        }
-
-        # Set the time range for the old terms query
-        query["query"]["bool"]["must"] = [{
-            "query_string": {
-                    "query": detection.query['query']
-                    }
-                },
-            {"range": {
-                "@timestamp": {
-                    "gte": "now-{}d".format(detection.new_terms_config['window_size']),
-                    "lte": "now-{}m".format(detection.lookbehind)}}}
-            ]
-        
-        print(json.dumps(query, indent=4, sort_keys=True))
-
-        docs = []
-        query_time = 0
-
-        # Search for terms in the window
-        res = elastic.conn.search(
-                            index=_input['config']['index'], body=query)
-
-        old_terms = []
-        if res:
-            query_time += res['took']
-            old_terms = [term["key"] for term in res["aggregations"][detection.new_terms_config['key_field']]["buckets"]]
-
-        print(old_terms)
 
         query["query"]["bool"]["must"] = [{
             "query_string": {
@@ -490,8 +587,6 @@ class Detector(Process):
                 }
             }
         }
-
-        print(json.dumps(query, indent=4, sort_keys=True))
         
         # Search for terms in the poll interval
         res = elastic.conn.search(
@@ -505,20 +600,23 @@ class Detector(Process):
         
         # Calculate the difference between the old and new terms
         net_new_terms = [term for term in new_terms if term not in old_terms]
-        print(net_new_terms)
+
         if net_new_terms:
+            self.set_new_term_state_entry(detection.uuid, detection.new_terms_config['key_field'], new_terms)
             for term in res["aggregations"][detection.new_terms_config['key_field']]["buckets"]:
                 if term["key"] in net_new_terms:
                     docs += term["doc"]["hits"]["hits"]
 
-        docs = elastic.parse_events(docs
-            , title=detection.name, signature_values=[detection.detection_id], risk_score=detection.risk_score)
+        if len(docs) > 0:
+            docs = elastic.parse_events(docs
+                , title=detection.name, signature_values=[detection.detection_id], risk_score=detection.risk_score)
 
-        for doc in docs:
-            doc.description = getattr(detection, 'description', 'No description provided')
-            doc.tags += getattr(detection,'tags',[])
-            doc.severity = getattr(detection, 'severity', 1)
-            doc.detection_id = getattr(detection, 'uuid', None)
+            for doc in docs:
+                doc.description = getattr(detection, 'description', 'No description provided') or 'No description provided'
+                doc.tags += getattr(detection, 'tags') or []
+                doc.severity = getattr(detection, 'severity', 1) or 1
+                doc.detection_id = getattr(detection, 'uuid', None) or None
+                doc.input_uuid = _input['uuid']
 
         update_payload = {
             'last_run': detection.last_run,
@@ -586,6 +684,11 @@ class Detector(Process):
         if hasattr(detection, 'exceptions') and detection.exceptions != None:
             query["query"]["bool"]["must_not"] = []
             for exception in detection.exceptions:
+
+                if 'list' in exception and exception['list']['uuid'] != None:
+                    list_values = self.agent.get_list_values(
+                        exception['list']['uuid'])
+                    exception['values'] = list_values
                 
                 query["query"]["bool"]["must_not"].append(
                     {
@@ -660,6 +763,7 @@ class Detector(Process):
             doc.tags += getattr(detection,'tags',[])
             doc.severity = getattr(detection, 'severity', 1)
             doc.detection_id = getattr(detection, 'uuid', None)
+            doc.input_uuid = _input['uuid']
 
         update_payload = {
             'last_run': detection.last_run,
@@ -740,6 +844,39 @@ class Detector(Process):
 
         input_uuid = detection.source['uuid']
 
+        # Grab the field settings for the detection so we can use them to build the query
+        # and parse the results
+        # TODO: This should be cached in the agent for a period of time
+        self.logger.info(f"Fetching field settings for {detection.name}")
+        response = self.agent.call_mgmt_api(
+            f"detection/{detection.uuid}/field_settings")
+        
+        signature_fields = []
+        field_mapping = []
+
+        """Call the API to fetch the expected field settings for this detection which includes
+        the fields to extract as observables and the fields to use as signature fields
+        If the API call fails, skip the detection run entirely and log an error
+        If the API call succeeds but the response is not valid JSON, skip the detection run
+        If the result of the API call is empty signature fields or fields default to using the
+        defaults from the input
+        """        
+        if response.status_code == 200:
+            try:
+                field_settings = response.json()
+                if 'signature_fields' in field_settings and len(field_settings['signature_fields']) > 0:
+                    signature_fields = field_settings['signature_fields']
+                if 'fields' in field_settings and len(field_settings['fields']) > 0:
+                    field_mapping = field_settings
+            except:
+                self.logger.error(
+                    f"Failed to parse field settings for {detection.name}")
+                return
+        else:
+            self.logger.error(
+                f"Failed to fetch field settings for {detection.name}")
+            return
+
         # Get the input or report an error if the agent doesn't know it
         if input_uuid in self.inputs:
             _input = self.inputs[input_uuid]
@@ -747,6 +884,12 @@ class Detector(Process):
             # TODO: Add a call to insert a reflex-detections-log record
             self.logger.error(
                 f"Detection {detection.name} attempted to use source {input_uuid} but no input found")
+
+        # If the length of signature fields or field_mapping is 0 use the settings from the input
+        if len(signature_fields) == 0:
+            signature_fields = _input['config']['signature_fields']
+        if len(field_mapping) == 0:
+            field_mapping = _input['config']['fields']
 
         # Get the credential or report an error if the agent doesn't know it
         if _input['credential'] in self.credentials:
@@ -771,7 +914,11 @@ class Detector(Process):
 
                     # Create a connection to Elasticsearch
                     elastic = Elastic(
-                        _input['config'], _input['field_mapping'], credential)
+                        _input['config'],
+                        field_mapping=field_mapping,
+                        credentials=credential,
+                        signature_fields=signature_fields
+                    )
 
                     rule_types = {
                         0: self.match_rule,
@@ -807,6 +954,11 @@ class Detector(Process):
                         if hasattr(detection, 'exceptions') and detection.exceptions != None:
                             query["query"]["bool"]["must_not"] = []
                             for exception in detection.exceptions:
+
+                                if 'list' in exception and exception['list']['uuid'] != None:
+                                    list_values = self.agent.get_list_values(
+                                        exception['list']['uuid'])
+                                    exception['values'] = list_values
                                 
                                 query["query"]["bool"]["must_not"].append(
                                     {
@@ -860,6 +1012,7 @@ class Detector(Process):
                                 doc.tags += getattr(detection,'tags',[]) or []
                                 doc.severity = getattr(detection, 'severity', 1)
                                 doc.detection_id = getattr(detection, 'uuid', None)
+                                doc.input_uuid = _input['uuid']
 
                         update_payload = {
                             'last_run': detection.last_run,
@@ -943,7 +1096,6 @@ class Detector(Process):
         while self.running:            
 
             self.logger.info('Fetching detections')
-            self.logger.info(f"{self.config} - {self.pid}")
             self.load_detections()
             self.run_rules()
             self.update_input_mappings()
