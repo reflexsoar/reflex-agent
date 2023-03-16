@@ -404,7 +404,7 @@ class Agent(object):
                 if 'health_check_interval' in self.config['policy']:
                     self.health_check_interval = self.config['policy']['health_check_interval']
 
-            self.logger.setLevel(self.config['policy']['logging_level'])
+            #self.logger.setLevel(self.config['policy']['logging_level'])
 
             if len(self.config['groups']) > 0:
                 for group in self.config['groups']:
