@@ -224,7 +224,8 @@ if __name__ == "__main__":
 
 
             agent.heartbeat()
-            logger.info('Agent sleeping for {} seconds'.format(agent.health_check_interval))        
+            agent.expire_cache()
+            logger.info('Agent sleeping for {} seconds'.format(agent.health_check_interval))
             time.sleep(agent.health_check_interval)
         except Exception as e:
             exception_type, exception_object, exception_traceback = sys.exc_info()
