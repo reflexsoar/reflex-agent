@@ -640,6 +640,8 @@ class Agent(object):
         if cache_key is None:
             cache_key = self.options.event_cache_key
 
+        print(cache_key)
+
         # Clear expired items from the cache
         #for item in self.event_cache:
 
