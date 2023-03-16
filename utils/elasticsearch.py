@@ -10,6 +10,7 @@ import chevron
 import logging
 import hashlib
 import ipaddress
+from loguru import logger
 
 from .base import Event
 
@@ -258,7 +259,7 @@ class Elastic(Process):
 
             scroll_id = res['_scroll_id']
             if 'total' in res['hits']:
-                logging.info(f"Found {len(res['hits']['hits'])} alerts.")
+                logger.info(f"Found {len(res['hits']['hits'])} alerts.")
                 scroll_size = res['hits']['total']['value']
                 events += self.parse_events(res['hits']['hits'])
                                 
@@ -267,17 +268,17 @@ class Elastic(Process):
                 
             # Scroll
             while (scroll_size > 0):
-                logging.info("Scrolling Elasticsearch results...")
+                logger.info("Scrolling Elasticsearch results...")
                 res = self.conn.scroll(scroll_id = scroll_id, scroll = '2m') # TODO: Move scroll time to config
                 if len(res['hits']['hits']) > 0:
-                    logging.info(f"Found {len(res['hits']['hits'])} alerts.")
+                    logger.info(f"Found {len(res['hits']['hits'])} alerts.")
                     events += self.parse_events(res['hits']['hits'])
                 scroll_size = len(res['hits']['hits'])
 
             return events
 
         except Exception as e:
-            logging.error("Failed to run search, make sure the Elasticsearch cluster is reachable. {}".format(e))
+            logger.error("Failed to run search, make sure the Elasticsearch cluster is reachable. {}".format(e))
             return []
         
     def run(self):

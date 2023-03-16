@@ -14,6 +14,7 @@ from zipfile import ZipFile
 from requests import Session, Request
 from pluginbase import PluginBase
 from queue import Queue
+from loguru import logger
 #from multiprocessing import Process, Queue
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -238,9 +239,10 @@ class Agent(object):
         log_handler.setFormatter(logging.Formatter(
             '%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
 
-        self.logger = logging.getLogger(self.__class__.__name__)
-        self.logger.addHandler(log_handler)
-        self.logger.setLevel(log_levels[log_level])
+        self.logger = logger
+        #self.logger = logging.getLogger(self.__class__.__name__)
+        #self.logger.addHandler(log_handler)
+        #self.logger.setLevel(log_levels[log_level])
         self.log_level = log_level
 
         if not options.name:
@@ -402,7 +404,7 @@ class Agent(object):
                 if 'health_check_interval' in self.config['policy']:
                     self.health_check_interval = self.config['policy']['health_check_interval']
 
-            self.logger.setLevel(self.config['policy']['logging_level'])
+            #self.logger.setLevel(self.config['policy']['logging_level'])
 
             if len(self.config['groups']) > 0:
                 for group in self.config['groups']:
@@ -582,7 +584,7 @@ class Agent(object):
                     events = self.check_cache(events, self.cache_ttl)
 
                 if events is None:
-                  break
+                    break
 
                 if len(events) > 0:
                     payload = {
@@ -605,7 +607,21 @@ class Agent(object):
             self.logger.error('An error occurred while trying to push events to the _bulk API. {}'.format(str(e)))
 
 
-    def check_cache(self, events: list, ttl: int, cache_key: str = "signature") -> list:
+    def expire_cache(self):
+        '''
+        Clears the cache of expired items
+        '''
+
+        self.logger.info('Checking for expired items in the cache')
+        expired_items = []
+        for item in self.event_cache:
+            if ((datetime.datetime.utcnow() - self.event_cache[item]).seconds/60) > self.options.event_realert_ttl:
+                expired_items.append(item)
+
+        for item in expired_items:
+            del self.event_cache[item]
+
+    def check_cache(self, events: list, ttl: int, cache_key: str = None) -> list:
         '''
         Pushes new items to the cache so they are not sent again unless the
         TTL on the item has expired
@@ -621,12 +637,15 @@ class Agent(object):
 
         events_to_send = []
 
+        if cache_key is None:
+            cache_key = self.options.event_cache_key
+
         # Clear expired items from the cache
-        for item in self.event_cache:
+        #for item in self.event_cache:
 
             # If the item has been in the cache longer than the TTL remove it
-            if ((datetime.datetime.utcnow() - self.event_cache[item]).seconds/60) > self.options.event_realert_ttl:
-                self.event_cache.pop(item)
+        #    if ((datetime.datetime.utcnow() - self.event_cache[item]).seconds/60) > self.options.event_realert_ttl:
+        #        self.event_cache.pop(item)
 
         # Check each event to see if it is in the cache
         if events:
@@ -644,7 +663,6 @@ class Agent(object):
 
             return events_to_send
         return None
-
 
 
     @retry(delay=30)
