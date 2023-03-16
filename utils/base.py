@@ -590,6 +590,9 @@ class Agent(object):
 
                     if skip_cache_check == False:
                         events = self.check_cache(events, self.cache_ttl)
+                        if len(events) == 0:
+                            self.logger.info('All events in this bulk request were found in the cache, skipping...')
+                            break
 
                     bulk_start = datetime.datetime.utcnow().isoformat()
                     for event in events:
