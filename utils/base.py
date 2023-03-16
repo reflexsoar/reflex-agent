@@ -590,7 +590,7 @@ class Agent(object):
 
                     if skip_cache_check == False:
                         events = self.check_cache(events, self.cache_ttl)
-                        if len(events) == 0:
+                        if events is None:
                             self.logger.info('All events in this bulk request were found in the cache, skipping...')
                             break
 
