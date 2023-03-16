@@ -14,6 +14,7 @@ from zipfile import ZipFile
 from requests import Session, Request
 from pluginbase import PluginBase
 from queue import Queue
+from loguru import logger
 #from multiprocessing import Process, Queue
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -238,9 +239,10 @@ class Agent(object):
         log_handler.setFormatter(logging.Formatter(
             '%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
 
-        self.logger = logging.getLogger(self.__class__.__name__)
-        self.logger.addHandler(log_handler)
-        self.logger.setLevel(log_levels[log_level])
+        self.logger = logger
+        #self.logger = logging.getLogger(self.__class__.__name__)
+        #self.logger.addHandler(log_handler)
+        #self.logger.setLevel(log_levels[log_level])
         self.log_level = log_level
 
         if not options.name:

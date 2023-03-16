@@ -16,6 +16,7 @@ opensearch-py = "*"
 retry = "*"
 ldap3 = "*"
 python-dateutil = "*"
+loguru = "*"
 
 [requires]
 python_version = "3.8"

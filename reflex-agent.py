@@ -12,9 +12,10 @@ from multiprocessing import Process, Queue
 from utils.elasticsearch import Elastic
 from dotenv import load_dotenv
 from module import Detector, Runner
+from loguru import logger
 
 
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+#logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logger.info)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 if __name__ == "__main__":
@@ -75,25 +76,25 @@ if __name__ == "__main__":
         # If the agent picked up its UUID and a previous access_token via .env
         # try to heartbeat
         if agent.uuid and agent.access_token:
-            logging.info('Existing UUID and access token found.  Attempting to heartbeat.')
+            logger.info('Existing UUID and access token found.  Attempting to heartbeat.')
             response = agent.heartbeat()
 
             # If the heartbeat succeeds set paired to True and skip the rest
             if response:
                 paired = True
             else:
-                logging.info('Heartbeat failed.  Attempting to pair.')
+                logger.info('Heartbeat failed.  Attempting to pair.')
 
         if paired is not True:
-            logging.info('Pairing agent..')
+            logger.info('Pairing agent..')
             paired = agent.pair()
 
         if paired is not True:
-            logging.error('Failed to pair agent')
+            logger.error('Failed to pair agent')
             exit(1)
 
     if agent.uuid is None:
-        logging.error('Agent .env file corrupt or missing.  Re-pair the agent')
+        logger.error('Agent .env file corrupt or missing.  Re-pair the agent')
         exit(1)
 
     role_processes = {
@@ -101,7 +102,7 @@ if __name__ == "__main__":
         'detector': None
     }
 
-    logging.info('Running agent')
+    logger.info('Running agent')
    
     while True:
 
@@ -127,10 +128,10 @@ if __name__ == "__main__":
                 }
 
                 if restart_roles:
-                    logging.info(f"Agent policy updated, restarting all roles with new configuration values")
+                    logger.info(f"Agent policy updated, restarting all roles with new configuration values")
                     for role in role_processes:
                         if role_processes[role]:
-                            logging.info(f"Stopping {role} role")
+                            logger.info(f"Stopping {role} role")
                             role_processes[role].terminate()
                             role_processes[role].join()
                             role_processes[role] = None
@@ -140,7 +141,7 @@ if __name__ == "__main__":
                         if role in agent.config['roles'] and not role_processes[role]:
 
                             # Start up the role process
-                            logging.info(f"Agent is a {role}, spawning {role} role")
+                            logger.info(f"Agent is a {role}, spawning {role} role")
                             role_processes[role] = agent_roles[role](config=role_configs[role], agent=agent)
                             role_processes[role].start()
 
@@ -150,9 +151,9 @@ if __name__ == "__main__":
                         # If the agent should be a specific role and the role process was previously started
                         # check it's health and attempt to restart it if it has crashed
                         elif role in agent.config['roles'] and role_processes[role]:
-                            logging.info(f"Checking {role} module status")
+                            logger.info(f"Checking {role} module status")
                             if not role_processes[role].is_alive():
-                                logging.info(f"{role} module has is dead, restarting {role} role")
+                                logger.info(f"{role} module has is dead, restarting {role} role")
                                 role_processes[role] = agent_roles[role](config=role_configs[role], agent=agent)
                                 role_processes[role].start()
                                 agent.role_health[role] = 1
@@ -162,7 +163,7 @@ if __name__ == "__main__":
                         # If the agent should not be a specific role and the role process was previously started
                         # close the role process and set the role as not running
                         elif not role in agent.config['roles'] and role_processes[role]:
-                            logging.info(f"Agent is no longer a {role}, stopping {role} role")
+                            logger.info(f"Agent is no longer a {role}, stopping {role} role")
                             role_processes[role].terminate()
                             role_processes[role].join()
                             agent.role_health[role] = 0
@@ -179,7 +180,7 @@ if __name__ == "__main__":
                                 'Content-Type': 'application/json'
                             }
 
-                            logging.info('Running input %s' % (i['name']))
+                            logger.info('Running input %s' % (i['name']))
 
                             # Fetch the credentials for the input
                             if 'credential' in i:
@@ -193,12 +194,12 @@ if __name__ == "__main__":
                                 agent.process_events(events, agent.options.skip_cache_check)
 
                             if i['plugin'] == "MSExchange":
-                                logging.error('MSExchange plugin not implemented yet.')
+                                logger.error('MSExchange plugin not implemented yet.')
                                 #e = MSExchange(i['config'], i['field_mapping'], credentials)
                                 #events = e.poll_mailbox()
 
                             if i['plugin'] == "LDAP":
-                                logging.error('LDAP plugin not implemented yet.')
+                                logger.error('LDAP plugin not implemented yet.')
 
                                 #l = LDAPSource(i['config'], credentials)
                                 #items = l.query()
@@ -212,17 +213,17 @@ if __name__ == "__main__":
 
                                 #agent.push_intel(items, i['threat_list_config'])
                 else:
-                    logging.info('Agent is not configured to run any roles')
+                    logger.info('Agent is not configured to run any roles')
                     for role in role_processes:
                         if role_processes[role]:
-                            logging.info(f"Agent is no longer a {role}, stopping {role} role")
+                            logger.info(f"Agent is no longer a {role}, stopping {role} role")
                             role_processes[role].terminate()
                             role_processes[role].join(1)
                             role_processes[role] = None
 
 
             agent.heartbeat()
-            logging.info('Agent sleeping for {} seconds'.format(agent.health_check_interval))        
+            logger.info('Agent sleeping for {} seconds'.format(agent.health_check_interval))        
             time.sleep(agent.health_check_interval)
         except Exception as e:
             exception_type, exception_object, exception_traceback = sys.exc_info()
