@@ -640,8 +640,6 @@ class Agent(object):
         if cache_key is None:
             cache_key = self.options.event_cache_key
 
-        self.logger.info(f"Checking cache with key: {cache_key}")
-
         # Clear expired items from the cache
         #for item in self.event_cache:
 
@@ -650,10 +648,12 @@ class Agent(object):
         #        self.event_cache.pop(item)
 
         # Check each event to see if it is in the cache
+        print(events)
         if events:
             for event in events:
                 # Compute the cache key based on the cache_key parameter
                 key = getattr(event, cache_key)
+                print(key)
 
                 # Check if the event is in the cache already
                 if key not in self.event_cache:
