@@ -257,7 +257,9 @@ class Elastic(Process):
                 body = {"query": {"range": {"@timestamp": {"gte": "now-{}".format(self.config['search_period'])}}}, "size":self.config['search_size']}
             res = self.conn.search(index=str(self.config['index']), body=body, scroll='2m') # TODO: Move scroll time to config
 
-            scroll_id = res['_scroll_id']
+            if 'scroll_id' in res:
+                scroll_id = res['_scroll_id']
+                
             if 'total' in res['hits']:
                 logger.info(f"Found {len(res['hits']['hits'])} alerts.")
                 scroll_size = res['hits']['total']['value']
