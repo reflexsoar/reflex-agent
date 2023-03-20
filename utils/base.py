@@ -153,6 +153,10 @@ class Event(JSONSerializable):
         Generates an event signature based on a set of supplied
         fields
         '''
+
+        # Always include the title
+        signature_values.append(self.title)
+
         # Compute the signature for the event based on the signature_fields configuration item
         if fields != []:
             for signature_field in sorted(fields):
@@ -160,7 +164,7 @@ class Event(JSONSerializable):
                 if value:
                     signature_values.append(value)
         else:
-            signature_values.append(self.title, datetime.datetime.utcnow())
+            signature_values.append(datetime.datetime.utcnow())
 
         event_hasher = hashlib.md5()
         event_hasher.update(str(signature_values).encode())
