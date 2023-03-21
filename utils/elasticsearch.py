@@ -257,25 +257,26 @@ class Elastic(Process):
                 body = {"query": {"range": {"@timestamp": {"gte": "now-{}".format(self.config['search_period'])}}}, "size":self.config['search_size']}
             res = self.conn.search(index=str(self.config['index']), body=body, scroll='2m') # TODO: Move scroll time to config
 
-            if 'scroll_id' in res:
+            scroll_id = None
+            if '_scroll_id' in res:
                 scroll_id = res['_scroll_id']
-                
+
             if 'total' in res['hits']:
                 logger.info(f"Found {len(res['hits']['hits'])} alerts.")
                 scroll_size = res['hits']['total']['value']
                 events += self.parse_events(res['hits']['hits'])
-                                
             else:
                 scroll_size = 0
                 
             # Scroll
-            while (scroll_size > 0):
-                logger.info("Scrolling Elasticsearch results...")
-                res = self.conn.scroll(scroll_id = scroll_id, scroll = '2m') # TODO: Move scroll time to config
-                if len(res['hits']['hits']) > 0:
-                    logger.info(f"Found {len(res['hits']['hits'])} alerts.")
-                    events += self.parse_events(res['hits']['hits'])
-                scroll_size = len(res['hits']['hits'])
+            if scroll_id:
+                while (scroll_size > 0):
+                    logger.info("Scrolling Elasticsearch results...")
+                    res = self.conn.scroll(scroll_id = scroll_id, scroll = '2m') # TODO: Move scroll time to config
+                    if len(res['hits']['hits']) > 0:
+                        logger.info(f"Found {len(res['hits']['hits'])} alerts.")
+                        events += self.parse_events(res['hits']['hits'])
+                    scroll_size = len(res['hits']['hits'])
 
             return events
 
