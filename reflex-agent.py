@@ -33,7 +33,7 @@ if __name__ == "__main__":
     parser.add_option('--groups', dest='groups', type=str, action="store", help="The groups this agent should be a part of")
     parser.add_option('--cacert', dest='cacert', type=str, action="store", default=False, help="Path to the certificate authority certificate used for the Reflex API")
     parser.add_option('--ignore-tls', dest='ignore_tls', action='store_false', default=True)
-    parser.add_option('--event-realert-ttl', dest='event_realert_ttl', type=int, action="store", default=300, help="The time before an event with the same signature should be sent again")
+    parser.add_option('--event-realert-ttl', dest='event_realert_ttl', type=int, action="store", default=30, help="The time before an event with the same signature should be sent again")
     parser.add_option('--event-cache-key', dest="event_cache_key", type=str, action="store", default=os.getenv('REFLEX_AGENT_CACHE_KEY', "signature"), help="The key used to store events in the cache")
     parser.add_option('--max-threshold-events', dest="max_threshold_events", type=int, action="store", default=100, help="The maximum number of events to send to the console when a threshold alarm matches")
     parser.add_option('--skip-cache-check', dest="skip_cache_check", action="store_true", default=False)
