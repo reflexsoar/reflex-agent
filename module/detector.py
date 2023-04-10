@@ -1,4 +1,3 @@
-import traceback
 import json
 import math
 import time
@@ -10,6 +9,7 @@ from multiprocessing.pool import ThreadPool
 from utils.base import JSONSerializable
 from utils.elasticsearch import Elastic
 from utils.indexed_dict import IndexedDict
+from .rule import BaseRule
 
 
 class Detection(JSONSerializable):
@@ -392,6 +392,13 @@ class Detector(Process):
 
         # Close the connection to Elasticsearch
         elastic.conn.transport.close()
+
+
+    def indicator_match_rule(self, detection, credential, _input):
+        """
+        Runs a match rule (rule_type: 5) against the log source
+        """
+        raise NotImplementedError
 
 
     def match_rule(self, detection):
@@ -926,6 +933,7 @@ class Detector(Process):
                         2: self.metric_rule,
                         3: self.mismatch_rule,
                         4: self.new_terms_rule,
+                        5: self.indicator_match_rule
                     }
 
                     detection.last_run = datetime.datetime.utcnow().isoformat()
