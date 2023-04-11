@@ -174,6 +174,10 @@ if __name__ == "__main__":
                     if 'poller' in agent.config['roles']:
                         for i in agent.config['inputs']:
 
+                            ## Don't poll input if it's set to detections_only
+                            #if 'detections_only' in i and i['detections_only'] is True:
+                            #    continue
+
                             credentials = ()
 
                             headers = {
@@ -232,3 +236,4 @@ if __name__ == "__main__":
             print("Exception type:", exception_type)
             print("Exception object:", exception_object)
             print("Exception traceback:", exception_traceback)
+            logger.error('Agent failed with exception: {}'.format(e))

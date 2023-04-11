@@ -115,11 +115,11 @@ class Elastic(Process):
 
             tags = []
             if 'tags' in field:
-                tags += field['tags']
+                if field['tags'] is not None:
+                    tags += field['tags']
 
             value = self.get_nested_field(source, field['field'])
 
-            
             data_type = field['data_type']
             # Check to make sure the value isn't actually an IP address
             # if it is, change the data type to ip
