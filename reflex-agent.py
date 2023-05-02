@@ -175,8 +175,8 @@ if __name__ == "__main__":
                         for i in agent.config['inputs']:
 
                             ## Don't poll input if it's set to detections_only
-                            #if 'detections_only' in i and i['detections_only'] is True:
-                            #    continue
+                            if 'detections_only' in i and i['detections_only'] is True:
+                                continue
 
                             credentials = ()
 
