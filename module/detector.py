@@ -252,7 +252,7 @@ class Detector(Process):
 
         # Fetch the detections from the API
         response = self.agent.call_mgmt_api(
-            f"detection?assess_rule=true")
+            f"detection?assess_rule=true&page_size=100")
         if response and response.status_code == 200:
             data = response.json()
             if 'detections' in data:
@@ -289,6 +289,9 @@ class Detector(Process):
         detection = Detection(**rule)
         self.logger.info(f"Assessing rule {detection.name}")
         source = detection.source
+        if source['uuid'] is None:
+            self.logger.error(f"Rule {detection.name} has no input")
+            return
         _input = self.inputs[source['uuid']]
         credential = self.credentials[_input['credential']]
         elastic = Elastic(_input['config'],
