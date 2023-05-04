@@ -252,7 +252,7 @@ class Detector(Process):
 
         # Fetch the detections from the API
         response = self.agent.call_mgmt_api(
-            f"detection?assess_rule=true&page_size=100")
+            f"detection?assess_rule=true&page_size=100&rule_type=0")
         if response and response.status_code == 200:
             data = response.json()
             if 'detections' in data:
