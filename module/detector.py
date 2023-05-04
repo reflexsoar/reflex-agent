@@ -349,14 +349,49 @@ class Detector(Process):
                 update_payload = {
                     'hits_over_time': json.dumps(events_over_time),
                     'average_hits_per_day': math.ceil(response['hits']['total']['value'] / DAYS),
-                    'assess_rule': False
+                    'assess_rule': False,
+                    'last_assessed': datetime.datetime.utcnow().isoformat()
                 }
             else:
                 update_payload = {
                     'hits_over_time': json.dumps({}),
                     'average_hits_per_day': 0,
-                    'assess_rule': False
+                    'assess_rule': False,
+                    'last_assessed': datetime.datetime.utcnow().isoformat()
                 }
+
+            # Run the query 5 times to get a good average of the response time
+            try:
+                total_time = 0
+                for i in range(5):
+                    performance_query = {
+                        "query": {
+                            "bool": {
+                                "must": [
+                                    {
+                                        "query_string": {
+                                            "query": detection.query['query']
+                                        }
+                                    },
+                                    {
+                                        "range": {
+                                            "@timestamp": {
+                                                "gte": f"now-5m",
+                                                "lte": "now"
+                                            }
+                                        }
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                    response = elastic.conn.search(index=_input['config']['index'], body=performance_query)
+                    total_time += response['took']
+
+                update_payload['average_query_time'] = math.ceil(total_time / 5)
+            except Exception as e:
+                self.logger.error(f"Error getting average query time for rule {detection.name}: {e}")
+                update_payload['average_query_time'] = 0
             
             self.agent.update_detection(detection.uuid, payload=update_payload)
 
@@ -365,7 +400,8 @@ class Detector(Process):
             update_payload = {
                     'hits_over_time': json.dumps({}),
                     'average_hits_per_day': 0,
-                    'assess_rule': False
+                    'assess_rule': False,
+                    'last_assessed': datetime.datetime.utcnow().isoformat()
                 }
             
             self.agent.update_detection(detection.uuid, payload=update_payload)
