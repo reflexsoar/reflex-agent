@@ -118,10 +118,9 @@ class Detector(Process):
         self.agent = agent
         self.inputs = {}
         self.credentials = {}
-        self.detection_rules = [] 
+        self.detection_rules = []
         self.should_exit = Event()
         self.new_term_state_table = {}
-
 
     def set_new_term_state_entry(self, detection_id, field, terms):
         '''
@@ -133,8 +132,8 @@ class Detector(Process):
             self.new_term_state_table[detection_id][field] = terms
         else:
             self.new_term_state_table[detection_id][field].extend(terms)
-            self.new_term_state_table[detection_id][field] = list(set(self.new_term_state_table[detection_id][field]))
-
+            self.new_term_state_table[detection_id][field] = list(
+                set(self.new_term_state_table[detection_id][field]))
 
     def get_new_term_state_entry(self, detection_id, field):
         '''
@@ -144,14 +143,12 @@ class Detector(Process):
             return self.new_term_state_table[detection_id][field]
         return []
 
-
     def exit(self):
         '''
         Shuts down the detector
         '''
         self.should_exit.set()
 
-    
     def extract_fields_from_indexed_dict(self, props):
 
         field_dict = IndexedDict(props)
@@ -245,7 +242,131 @@ class Detector(Process):
                 except Exception as e:
                     self.logger.error(
                         f"Error updating input field list for input {_input['name']}: {e}")
-                    
+
+    def load_rules_for_assessment(self):
+        '''
+        Loads rules that are in need of assessment from the API
+        '''
+
+        rules = []
+
+        # Fetch the detections from the API
+        response = self.agent.call_mgmt_api(
+            f"detection?assess_rule=true")
+        if response and response.status_code == 200:
+            data = response.json()
+            if 'detections' in data:
+                rules = data['detections']
+
+        input_uuids = []
+        for rule in rules:
+            source = rule['source']
+            if source['uuid'] not in input_uuids:
+                input_uuids.append(source['uuid'])
+
+        # Get the configuration for each input
+        for input_uuid in input_uuids:
+            _input = self.agent.get_input(input_uuid)
+            if _input:
+                self.inputs[input_uuid] = _input
+
+        # Get the credential for each input
+        for input_uuid in self.inputs:
+            credential_uuid = self.inputs[input_uuid]['credential']
+            if credential_uuid not in self.credentials:
+                self.credentials[credential_uuid] = self.agent.fetch_credentials(
+                    credential_uuid)
+                
+        return rules
+
+    def _assess_rule(self, rule):
+        '''
+        Runs the query against an input as a date histogram query
+        '''
+
+        DAYS = 30
+
+        detection = Detection(**rule)
+        self.logger.info(f"Assessing rule {detection.name}")
+        source = detection.source
+        _input = self.inputs[source['uuid']]
+        credential = self.credentials[_input['credential']]
+        elastic = Elastic(_input['config'],
+                          _input['field_mapping'], credential)
+        
+        # Only support match rules at this time
+        if detection.rule_type != 0:
+            return
+
+        query = {
+            "query": {
+                "bool": {
+                    "must": [
+                        {
+                            "range": {
+                                "@timestamp": {
+                                    "gte": f"now-{DAYS}d",
+                                    "lte": "now"
+                                }
+                            }
+                        },
+                        {
+                            "query_string": {
+                                "query": detection.query['query']
+                            }
+                        }
+                    ]
+                }
+            },
+            "aggs": {
+                "overtime": {
+                    "date_histogram": {
+                        "field": "@timestamp",
+                        "fixed_interval": "1d",
+                        "extended_bounds": {
+                            "min": f"now-{DAYS}d",
+                            "max": "now"
+                        }
+                    }
+                }
+            },
+            "size": 0
+        }
+        
+        # Run the query
+        try:
+            response = elastic.conn.search(index=_input['config']['index'], body=query)
+            if response and response['hits']['total']['value'] > 0:
+
+                events_over_time = {}
+                # Print the results of the overtime bucketing
+                for bucket in response['aggregations']['overtime']['buckets']:
+                    events_over_time[bucket['key_as_string']] = bucket['doc_count']
+
+                update_payload = {
+                    'hits_over_time': json.dumps(events_over_time),
+                    'average_hits_per_day': math.ceil(response['hits']['total']['value'] / DAYS),
+                    'assess_rule': False
+                }
+            else:
+                update_payload = {
+                    'hits_over_time': json.dumps({}),
+                    'average_hits_per_day': 0,
+                    'assess_rule': False
+                }
+            
+            self.agent.update_detection(detection.uuid, payload=update_payload)
+
+        except Exception as e:
+            self.logger.error(f"Error assessing rule {detection.name}: {e}")
+
+    def assess_rules(self):
+        '''
+        Runs the assessment logic for each rule that is in need of assessment
+        '''
+        self.logger.info('Assessing rules')
+        for rule in self.load_rules_for_assessment():
+            self._assess_rule(rule)
 
     def load_detections(self, active=True):
         '''
@@ -276,15 +397,15 @@ class Detector(Process):
         # Get the credential for each input
         for input_uuid in self.inputs:
             credential_uuid = self.inputs[input_uuid]['credential']
-            self.credentials[credential_uuid] = self.agent.fetch_credentials(
-                credential_uuid)
+            if credential_uuid not in self.credentials:
+                self.credentials[credential_uuid] = self.agent.fetch_credentials(
+                    credential_uuid)
 
     def shutdown(self):
         """
         Shuts down the detector process, if graceful_shutdown 
         """
         raise NotImplementedError
-
 
     def get_nested_field(self, message, field):
         '''
@@ -305,7 +426,6 @@ class Detector(Process):
             if element:
                 value = message.get(element)
                 return value if len(args) == 1 else self.get_nested_field(value, args[1:])
-
 
     def mismatch_rule(self, detection, credential, _input):
         """
@@ -332,12 +452,14 @@ class Detector(Process):
             "size": _input['config']['search_size']
         }
 
-        docs, query_time = self.run_rule_query(query, _input, detection, elastic)
+        docs, query_time = self.run_rule_query(
+            query, _input, detection, elastic)
         hits = []
         for doc in docs:
 
-            doc.description = getattr(detection, 'description', 'No description provided')
-            doc.tags += getattr(detection,'tags',[]) or []
+            doc.description = getattr(
+                detection, 'description', 'No description provided')
+            doc.tags += getattr(detection, 'tags', []) or []
             doc.severity = getattr(detection, 'severity', 1)
             doc.detection_id = getattr(detection, 'uuid', None)
             doc.input_uuid = _input['uuid']
@@ -346,15 +468,18 @@ class Detector(Process):
             operator = detection.field_mismatch_config['operator']
 
             # Convert the raw log back to a dictionary
-            raw_log = json.loads(doc.raw_log)           
+            raw_log = json.loads(doc.raw_log)
 
             # Extract the fields to compare
-            source_field_value = self.get_nested_field(raw_log, detection.field_mismatch_config['source_field'])
-            destination_field_value = self.get_nested_field(raw_log, detection.field_mismatch_config['target_field'])
+            source_field_value = self.get_nested_field(
+                raw_log, detection.field_mismatch_config['source_field'])
+            destination_field_value = self.get_nested_field(
+                raw_log, detection.field_mismatch_config['target_field'])
 
-            # If both fields have a value compare them 
+            # If both fields have a value compare them
             if source_field_value and destination_field_value:
-                hit = self.value_check(source_field_value, operator, destination_field_value)
+                hit = self.value_check(
+                    source_field_value, operator, destination_field_value)
 
                 if hit:
                     hit_descriptor = f"{detection.field_mismatch_config['source_field']} value {source_field_value} {operator} {detection.field_mismatch_config['target_field']} value {destination_field_value}"
@@ -364,7 +489,6 @@ class Detector(Process):
                         doc.description = hit_descriptor
                     hits.append(doc)
 
-        
         update_payload = {
             'last_run': detection.last_run,
             'hits': len(hits)
@@ -393,13 +517,11 @@ class Detector(Process):
         # Close the connection to Elasticsearch
         elastic.conn.transport.close()
 
-
     def indicator_match_rule(self, detection, credential, _input):
         """
         Runs a match rule (rule_type: 5) against the log source
         """
         raise NotImplementedError
-
 
     def match_rule(self, detection):
         """
@@ -407,13 +529,11 @@ class Detector(Process):
         """
         raise NotImplementedError
 
-
     def metric_rule(self, detection):
         """
         Runs a metric rule (rule_type: 2)
         """
         raise NotImplementedError
-
 
     def value_check(self, value, operator, target):
         '''
@@ -439,7 +559,6 @@ class Detector(Process):
             self.logger.error(f"Error comparing values: {e}")
             return False
 
-
     def new_terms_rule(self, detection, credential, _input):
         """
         Runs a terms aggregation using a base query and aggregation field and 
@@ -452,19 +571,21 @@ class Detector(Process):
         # Create a connection to Elasticsearch
         elastic = Elastic(
             _input['config'], _input['field_mapping'], credential)
-        
+
         query_time = 0
         docs = []
-        old_terms = self.get_new_term_state_entry(detection.uuid, detection.new_terms_config['key_field'])
+        old_terms = self.get_new_term_state_entry(
+            detection.uuid, detection.new_terms_config['key_field'])
 
         if old_terms == []:
-            self.logger.info(f"New terms rule {detection.uuid} has no previous terms, running a full query")
-        
+            self.logger.info(
+                f"New terms rule {detection.uuid} has no previous terms, running a full query")
+
             query = {
                 "query": {
                     "bool": {
                         "must": [
-                            
+
                         ]
                     }
                 },
@@ -480,7 +601,7 @@ class Detector(Process):
                         list_values = self.agent.get_list_values(
                             exception['list']['uuid'])
                         exception['values'] = list_values
-                    
+
                     query["query"]["bool"]["must_not"].append(
                         {
                             "terms": {
@@ -493,16 +614,16 @@ class Detector(Process):
             # Set the time range for the old terms query
             query["query"]["bool"]["must"] = [{
                 "query_string": {
-                        "query": detection.query['query']
-                        }
-                    },
+                    "query": detection.query['query']
+                }
+            },
                 {"range": {
                     "@timestamp": {
                         "gte": "now-{}d".format(detection.new_terms_config['window_size']),
                         "lte": "now"}}}
-                ]
+            ]
 
-            # Determine how many terms actually exist for the query and 
+            # Determine how many terms actually exist for the query and
             # if they exceed max_terms disable the rule
             query["aggs"] = {
                 detection.new_terms_config['key_field']: {
@@ -514,11 +635,12 @@ class Detector(Process):
 
             res = elastic.conn.search(
                 index=_input['config']['index'], body=query)
-            
+
             if res:
                 cardinality = res['aggregations'][detection.new_terms_config['key_field']]['value']
                 if cardinality > detection.new_terms_config['max_terms']:
-                    self.logger.error(f"New terms rule {detection.uuid} has {cardinality} terms, which exceeds the maximum of {detection.new_terms_config['max_terms']}")
+                    self.logger.error(
+                        f"New terms rule {detection.uuid} has {cardinality} terms, which exceeds the maximum of {detection.new_terms_config['max_terms']}")
                     update_payload = {
                         'active': False,
                     }
@@ -527,8 +649,9 @@ class Detector(Process):
                         update_payload['warnings'] += 'max_terms_exceeded'
                     else:
                         update_payload['warnings'] = 'max_terms_exceeded'
-                    
-                    self.agent.update_detection(detection.uuid, payload=update_payload)
+
+                    self.agent.update_detection(
+                        detection.uuid, payload=update_payload)
                     return
 
             # Aggregate on the field where the terms should be found
@@ -543,24 +666,27 @@ class Detector(Process):
 
             # Search for terms in the window
             res = elastic.conn.search(
-                                index=_input['config']['index'], body=query)
+                index=_input['config']['index'], body=query)
 
             if res:
                 query_time += res['took']
-                old_terms = [term["key"] for term in res["aggregations"][detection.new_terms_config['key_field']]["buckets"]]
+                old_terms = [term["key"] for term in res["aggregations"]
+                             [detection.new_terms_config['key_field']]["buckets"]]
 
-                self.set_new_term_state_entry(detection.uuid, detection.new_terms_config['key_field'], old_terms)
+                self.set_new_term_state_entry(
+                    detection.uuid, detection.new_terms_config['key_field'], old_terms)
 
         # If there are no old terms, there is nothing to compare against so skip
         if old_terms == None:
-            self.logger.info(f"New terms rule {detection.uuid} has no previous terms, skipping")
+            self.logger.info(
+                f"New terms rule {detection.uuid} has no previous terms, skipping")
             return
-        
+
         query = {
             "query": {
                 "bool": {
                     "must": [
-                        
+
                     ]
                 }
             },
@@ -569,13 +695,13 @@ class Detector(Process):
 
         query["query"]["bool"]["must"] = [{
             "query_string": {
-                    "query": detection.query['query']
-                    }
-                },
+                "query": detection.query['query']
+            }
+        },
             {"range": {
                 "@timestamp": {
                     "gte": "now-{}m".format(detection.lookbehind)}}}
-            ]
+        ]
 
         # Change the aggregation to include the top hit document so we can use it in an alarm
         # should a term be new
@@ -594,32 +720,35 @@ class Detector(Process):
                 }
             }
         }
-        
+
         # Search for terms in the poll interval
         res = elastic.conn.search(
-                            index=_input['config']['index'], body=query)
+            index=_input['config']['index'], body=query)
 
         new_terms = []
         if res:
             query_time += res['took']
             if res["aggregations"][detection.new_terms_config['key_field']]["buckets"]:
-                new_terms = [term["key"] for term in res["aggregations"][detection.new_terms_config['key_field']]["buckets"]]
-        
+                new_terms = [term["key"] for term in res["aggregations"]
+                             [detection.new_terms_config['key_field']]["buckets"]]
+
         # Calculate the difference between the old and new terms
         net_new_terms = [term for term in new_terms if term not in old_terms]
 
         if net_new_terms:
-            self.set_new_term_state_entry(detection.uuid, detection.new_terms_config['key_field'], new_terms)
+            self.set_new_term_state_entry(
+                detection.uuid, detection.new_terms_config['key_field'], new_terms)
             for term in res["aggregations"][detection.new_terms_config['key_field']]["buckets"]:
                 if term["key"] in net_new_terms:
                     docs += term["doc"]["hits"]["hits"]
 
         if len(docs) > 0:
-            docs = elastic.parse_events(docs
-                , title=detection.name, signature_values=[detection.detection_id], risk_score=detection.risk_score)
+            docs = elastic.parse_events(docs, title=detection.name, signature_values=[
+                                        detection.detection_id], risk_score=detection.risk_score)
 
             for doc in docs:
-                doc.description = getattr(detection, 'description', 'No description provided') or 'No description provided'
+                doc.description = getattr(
+                    detection, 'description', 'No description provided') or 'No description provided'
                 doc.tags += getattr(detection, 'tags') or []
                 doc.severity = getattr(detection, 'severity', 1) or 1
                 doc.detection_id = getattr(detection, 'uuid', None) or None
@@ -650,7 +779,6 @@ class Detector(Process):
 
         self.agent.update_detection(detection.uuid, payload=update_payload)
 
-
     def threshold_rule(self, detection, credential, _input):
         """
         Runs a base query and determines if the threshold is above a certain value
@@ -662,13 +790,13 @@ class Detector(Process):
         elastic = Elastic(
             _input['config'], _input['field_mapping'], credential)
 
-        # If the detection has a max_events configured and it is not greater than what the 
+        # If the detection has a max_events configured and it is not greater than what the
         # agent is configured to allow, use the configured value
         # If the detection does not have a max_events configured, default to 10 events
         if 'max_events' in detection.threshold_config:
             if detection.threshold_config['max_events'] > self.config['max_threshold_events']:
                 detection.threshold_config['max_events'] = self.config['max_threshold_events']
-        else:            
+        else:
             detection.threshold_config['max_events'] = 10
 
         query = {
@@ -696,7 +824,7 @@ class Detector(Process):
                     list_values = self.agent.get_list_values(
                         exception['list']['uuid'])
                     exception['values'] = list_values
-                
+
                 query["query"]["bool"]["must_not"].append(
                     {
                         "terms": {
@@ -724,7 +852,7 @@ class Detector(Process):
                     }
                 }
             }
-                   
+
         docs = []
         query_time = 0
         scroll_size = 0
@@ -732,7 +860,7 @@ class Detector(Process):
         threshold = detection.threshold_config['threshold']
 
         res = elastic.conn.search(
-                            index=_input['config']['index'], body=query)
+            index=_input['config']['index'], body=query)
 
         query_time = res['took']
         if has_key_field == False:
@@ -746,12 +874,12 @@ class Detector(Process):
         else:
 
             buckets = res['aggregations'][detection.threshold_config['key_field']]['buckets']
-            
+
             if 'per_field' in detection.threshold_config and detection.threshold_config['per_field']:
                 for bucket in buckets:
                     hit_count = bucket['doc_count']
                     hit = self.value_check(hit_count, operator, threshold)
-                    
+
                     if hit:
                         docs += bucket['doc']['hits']['hits']
             else:
@@ -762,12 +890,13 @@ class Detector(Process):
                     for bucket in buckets:
                         docs += bucket['doc']['hits']['hits']
 
-        docs = elastic.parse_events(docs
-            , title=detection.name, signature_values=[detection.detection_id], risk_score=detection.risk_score)
+        docs = elastic.parse_events(docs, title=detection.name, signature_values=[
+                                    detection.detection_id], risk_score=detection.risk_score)
 
         for doc in docs:
-            doc.description = getattr(detection, 'description', 'No description provided')
-            doc.tags += getattr(detection,'tags',[])
+            doc.description = getattr(
+                detection, 'description', 'No description provided')
+            doc.tags += getattr(detection, 'tags', [])
             doc.severity = getattr(detection, 'severity', 1)
             doc.detection_id = getattr(detection, 'uuid', None)
             doc.input_uuid = _input['uuid']
@@ -795,15 +924,15 @@ class Detector(Process):
             self.agent.process_events(docs, True)
             update_payload['last_hit'] = datetime.datetime.utcnow().isoformat()
 
-        self.agent.update_detection(detection.uuid, payload=update_payload)        
+        self.agent.update_detection(detection.uuid, payload=update_payload)
 
     def run_rule_query(self, query, _input, detection, elastic):
-        
+
         docs = []
         query_time = 0
         scroll_size = 0
         res = elastic.conn.search(
-                            index=_input['config']['index'], body=query, scroll='2m')
+            index=_input['config']['index'], body=query, scroll='2m')
 
         scroll_id = res['_scroll_id']
         if 'total' in res['hits']:
@@ -836,11 +965,10 @@ class Detector(Process):
 
             scroll_size = len(res['hits']['hits'])
 
-        if len(docs) > 0 :
+        if len(docs) > 0:
             self.logger.info(
                 f"{detection.name} ({detection.uuid}) - Total Hits {len(docs)}")
         return docs, query_time
-
 
     def execute(self, rule):
         """
@@ -857,7 +985,7 @@ class Detector(Process):
         self.logger.info(f"Fetching field settings for {detection.name}")
         response = self.agent.call_mgmt_api(
             f"detection/{detection.uuid}/field_settings")
-        
+
         signature_fields = []
         field_mapping = []
 
@@ -867,7 +995,7 @@ class Detector(Process):
         If the API call succeeds but the response is not valid JSON, skip the detection run
         If the result of the API call is empty signature fields or fields default to using the
         defaults from the input
-        """        
+        """
         if response.status_code == 200:
             try:
                 field_settings = response.json()
@@ -939,9 +1067,10 @@ class Detector(Process):
                     detection.last_run = datetime.datetime.utcnow().isoformat()
 
                     if detection.rule_type != 0:
-                        rule_types[detection.rule_type](detection, credential, _input)
-                    
-                    if detection.rule_type == 0 :
+                        rule_types[detection.rule_type](
+                            detection, credential, _input)
+
+                    if detection.rule_type == 0:
 
                         # TODO: Support for multiple queries
                         query = {
@@ -967,7 +1096,7 @@ class Detector(Process):
                                     list_values = self.agent.get_list_values(
                                         exception['list']['uuid'])
                                     exception['values'] = list_values
-                                
+
                                 query["query"]["bool"]["must_not"].append(
                                     {
                                         "terms": {
@@ -1016,10 +1145,14 @@ class Detector(Process):
                         # Update all the docs to have detection rule hard values
                         if docs:
                             for doc in docs:
-                                doc.description = getattr(detection, 'description', 'No description provided')
-                                doc.tags += getattr(detection,'tags',[]) or []
-                                doc.severity = getattr(detection, 'severity', 1)
-                                doc.detection_id = getattr(detection, 'uuid', None)
+                                doc.description = getattr(
+                                    detection, 'description', 'No description provided')
+                                doc.tags += getattr(detection,
+                                                    'tags', []) or []
+                                doc.severity = getattr(
+                                    detection, 'severity', 1)
+                                doc.detection_id = getattr(
+                                    detection, 'uuid', None)
                                 doc.input_uuid = _input['uuid']
 
                         update_payload = {
@@ -1074,7 +1207,7 @@ class Detector(Process):
         # Determine which rules to run in parallel based on the concurrent_rules setting
         if self.detection_rules:
             rule_sets = list(split_rules(self.detection_rules,
-                            self.config['concurrent_rules']))
+                                         self.config['concurrent_rules']))
         else:
             rule_sets = []
 
@@ -1101,12 +1234,13 @@ class Detector(Process):
         Periodically runs detection rules as defined by the ReflexSOAR API
         """
         self.logger.info('Starting detection agent')
-        while self.running:            
+        while self.running:
 
             self.logger.info('Fetching detections')
             self.load_detections()
             self.run_rules()
             self.update_input_mappings()
+            self.assess_rules()
             self.logger.info('Run complete, waiting')
 
             if self.should_exit.is_set():
