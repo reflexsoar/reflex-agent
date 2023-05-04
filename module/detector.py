@@ -252,7 +252,7 @@ class Detector(Process):
 
         # Fetch the detections from the API
         response = self.agent.call_mgmt_api(
-            f"detection?assess_rule=true&page_size=100")
+            f"detection?assess_rule=true&page_size=100&rule_type=0")
         if response and response.status_code == 200:
             data = response.json()
             if 'detections' in data:
@@ -362,6 +362,14 @@ class Detector(Process):
 
         except Exception as e:
             self.logger.error(f"Error assessing rule {detection.name}: {e}")
+            update_payload = {
+                    'hits_over_time': json.dumps({}),
+                    'average_hits_per_day': 0,
+                    'assess_rule': False
+                }
+            
+            self.agent.update_detection(detection.uuid, payload=update_payload)
+
 
     def assess_rules(self):
         '''
