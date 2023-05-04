@@ -362,6 +362,14 @@ class Detector(Process):
 
         except Exception as e:
             self.logger.error(f"Error assessing rule {detection.name}: {e}")
+            update_payload = {
+                    'hits_over_time': json.dumps({}),
+                    'average_hits_per_day': 0,
+                    'assess_rule': False
+                }
+            
+            self.agent.update_detection(detection.uuid, payload=update_payload)
+
 
     def assess_rules(self):
         '''
