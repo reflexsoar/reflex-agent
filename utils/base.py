@@ -434,6 +434,7 @@ class Agent(object):
         '''
         Updated a detection via PUT request to the API
         '''
+
         payload = json.loads(json.dumps(payload, default=str))
         response = self.call_mgmt_api(f"detection/{uuid}", data=payload, method='PUT')
         if response and response.status_code != 200:
