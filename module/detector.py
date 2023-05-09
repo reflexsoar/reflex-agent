@@ -1093,7 +1093,7 @@ class Detector(Process):
         try:
             if detection.should_run(catchup_period=self.config['catchup_period']):
                 self.logger.info(
-                    f"Running detection {detection.name} using {_input['name']} ({_input['uuid']}) and credential {_input['credential']}")
+                    f"Running detection {detection.name} using {_input['name']} ({_input['uuid']}) and credential {_input['credential']} - Lookbehind {detection.lookbehind} minutes.")
 
                 if _input['plugin'] == "Elasticsearch":
 
