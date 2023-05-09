@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 import json
 import math
 import time
@@ -1253,6 +1254,11 @@ class Detector(Process):
         Runs the set of rules configured for this detection agent
         """
 
+        with ThreadPoolExecutor(max_workers=self.config['concurrent_rules']) as executor:
+            executor.map(self.execute, self.detection_rules)
+
+        '''
+
         def split_rules(rules, concurrent_rules):
             """
             Splits a set of rules into a smaller set
@@ -1284,6 +1290,7 @@ class Detector(Process):
             # Send the hits as events
 
             # Update each rules last_run date and hits count
+        '''
 
     def run(self):
         """
