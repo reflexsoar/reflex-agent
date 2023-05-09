@@ -434,7 +434,7 @@ class Detector(Process):
             f"detection?agent={self.agent.uuid}&active={active}")
         if response and response.status_code == 200:
             self.detection_rules = response.json()['detections']
-            print(f"Loaded {len(self.detection_rules)} detections")
+            self.logger.info(f"Loaded {len(self.detection_rules)} detections")
 
         # Load all the input configurations for each detection
         self.inputs = {}
