@@ -613,6 +613,15 @@ class Detector(Process):
         SHA1 hash of the base64 string
         """
 
+        # If the detection has a max_events configured and it is not greater than what the
+        # agent is configured to allow, use the configured value
+        # If the detection does not have a max_events configured, default to 10 events
+        if 'max_events' in detection.threshold_config:
+            if detection.threshold_config['max_events'] > self.config['max_threshold_events']:
+                detection.threshold_config['max_events'] = self.config['max_threshold_events']
+        else:
+            detection.threshold_config['max_events'] = 10
+
         start_execution_timer = datetime.datetime.utcnow()
 
         # Create a connection to Elasticsearch
