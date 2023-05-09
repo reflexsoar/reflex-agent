@@ -989,7 +989,7 @@ class Detector(Process):
         query_time = 0
         scroll_size = 0
         res = elastic.conn.search(
-            index=_input['config']['index'], body=query, scroll='2m')
+            index=_input['config']['index'], body=query, scroll='30s')
 
         scroll_id = res['_scroll_id']
         if 'total' in res['hits']:
@@ -1011,7 +1011,7 @@ class Detector(Process):
                 f"{detection.name} ({detection.uuid}) - Scrolling Elasticsearch results...")
             # TODO: Move scroll time to config
             res = elastic.conn.scroll(
-                scroll_id=scroll_id, scroll='2m')
+                scroll_id=scroll_id, scroll='30s')
             if len(res['hits']['hits']) > 0:
                 query_time += res['took']
                 self.logger.info(
@@ -1163,7 +1163,7 @@ class Detector(Process):
                                 )
 
                         res = elastic.conn.search(
-                            index=_input['config']['index'], body=query, scroll='2m')
+                            index=_input['config']['index'], body=query, scroll='30s')
 
                         scroll_id = res['_scroll_id']
                         if 'total' in res['hits']:
@@ -1185,7 +1185,7 @@ class Detector(Process):
                                 f"{detection.name} ({detection.uuid}) - Scrolling Elasticsearch results...")
                             # TODO: Move scroll time to config
                             res = elastic.conn.scroll(
-                                scroll_id=scroll_id, scroll='2m')
+                                scroll_id=scroll_id, scroll='30s')
                             if len(res['hits']['hits']) > 0:
                                 query_time += res['took']
                                 self.logger.info(
