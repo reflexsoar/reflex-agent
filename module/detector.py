@@ -1256,7 +1256,7 @@ class Detector(Process):
                         self.agent.process_events(docs, True)
 
         except Exception as e:
-            self.logger.error(f"Foo: {e}")
+            self.logger.error(f"Detection {detection.name} encountered an error: {e}")
 
     def run_rules(self):
         """
