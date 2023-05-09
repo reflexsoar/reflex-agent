@@ -277,7 +277,7 @@ class Detector(Process):
             if credential_uuid not in self.credentials:
                 self.credentials[credential_uuid] = self.agent.fetch_credentials(
                     credential_uuid)
-                
+
         return rules
 
     def _assess_rule(self, rule):
@@ -297,7 +297,7 @@ class Detector(Process):
         credential = self.credentials[_input['credential']]
         elastic = Elastic(_input['config'],
                           _input['field_mapping'], credential)
-        
+
         # Only support match rules at this time
         if detection.rule_type != 0:
             return
@@ -336,16 +336,18 @@ class Detector(Process):
             },
             "size": 0
         }
-        
+
         # Run the query
         try:
-            response = elastic.conn.search(index=_input['config']['index'], body=query)
+            response = elastic.conn.search(
+                index=_input['config']['index'], body=query)
             if response and response['hits']['total']['value'] > 0:
 
                 events_over_time = {}
                 # Print the results of the overtime bucketing
                 for bucket in response['aggregations']['overtime']['buckets']:
-                    events_over_time[bucket['key_as_string']] = bucket['doc_count']
+                    events_over_time[bucket['key_as_string']
+                                     ] = bucket['doc_count']
 
                 update_payload = {
                     'hits_over_time': json.dumps(events_over_time),
@@ -386,27 +388,29 @@ class Detector(Process):
                             }
                         }
                     }
-                    response = elastic.conn.search(index=_input['config']['index'], body=performance_query)
+                    response = elastic.conn.search(
+                        index=_input['config']['index'], body=performance_query)
                     total_time += response['took']
 
-                update_payload['average_query_time'] = math.ceil(total_time / 5)
+                update_payload['average_query_time'] = math.ceil(
+                    total_time / 5)
             except Exception as e:
-                self.logger.error(f"Error getting average query time for rule {detection.name}: {e}")
+                self.logger.error(
+                    f"Error getting average query time for rule {detection.name}: {e}")
                 update_payload['average_query_time'] = 0
-            
+
             self.agent.update_detection(detection.uuid, payload=update_payload)
 
         except Exception as e:
             self.logger.error(f"Error assessing rule {detection.name}: {e}")
             update_payload = {
-                    'hits_over_time': json.dumps({}),
-                    'average_hits_per_day': 0,
-                    'assess_rule': False,
-                    'last_assessed': datetime.datetime.utcnow().isoformat()
-                }
-            
-            self.agent.update_detection(detection.uuid, payload=update_payload)
+                'hits_over_time': json.dumps({}),
+                'average_hits_per_day': 0,
+                'assess_rule': False,
+                'last_assessed': datetime.datetime.utcnow().isoformat()
+            }
 
+            self.agent.update_detection(detection.uuid, payload=update_payload)
 
     def assess_rules(self):
         '''
@@ -1034,65 +1038,67 @@ class Detector(Process):
         """
         detection = Detection(**rule)
 
-        input_uuid = detection.source['uuid']
-
-        # Grab the field settings for the detection so we can use them to build the query
-        # and parse the results
-        # TODO: This should be cached in the agent for a period of time
-        self.logger.info(f"Fetching field settings for {detection.name}")
-        response = self.agent.call_mgmt_api(
-            f"detection/{detection.uuid}/field_settings")
-
-        signature_fields = []
-        field_mapping = []
-
-        """Call the API to fetch the expected field settings for this detection which includes
-        the fields to extract as observables and the fields to use as signature fields
-        If the API call fails, skip the detection run entirely and log an error
-        If the API call succeeds but the response is not valid JSON, skip the detection run
-        If the result of the API call is empty signature fields or fields default to using the
-        defaults from the input
-        """
-        if response.status_code == 200:
-            try:
-                field_settings = response.json()
-                if 'signature_fields' in field_settings and len(field_settings['signature_fields']) > 0:
-                    signature_fields = field_settings['signature_fields']
-                if 'fields' in field_settings and len(field_settings['fields']) > 0:
-                    field_mapping = field_settings
-            except:
-                self.logger.error(
-                    f"Failed to parse field settings for {detection.name}")
-                return
-        else:
-            self.logger.error(
-                f"Failed to fetch field settings for {detection.name}")
-            return
-
-        # Get the input or report an error if the agent doesn't know it
-        if input_uuid in self.inputs:
-            _input = self.inputs[input_uuid]
-        else:
-            # TODO: Add a call to insert a reflex-detections-log record
-            self.logger.error(
-                f"Detection {detection.name} attempted to use source {input_uuid} but no input found")
-
-        # If the length of signature fields or field_mapping is 0 use the settings from the input
-        if len(signature_fields) == 0:
-            signature_fields = _input['config']['signature_fields']
-        if len(field_mapping) == 0:
-            field_mapping = _input['config']['fields']
-
-        # Get the credential or report an error if the agent doesn't know it
-        if _input['credential'] in self.credentials:
-            credential = self.credentials[_input['credential']]
-        else:
-            # TODO: Add a call to insert a reflex-detections-log record
-            self.logger.error(
-                f"Detection {detection.name} attempted to use credential {_input['credential']} but no credential found")
-
         try:
             if detection.should_run(catchup_period=self.config['catchup_period']):
+                input_uuid = detection.source['uuid']
+
+                # Grab the field settings for the detection so we can use them to build the query
+                # and parse the results
+                # TODO: This should be cached in the agent for a period of time
+                self.logger.info(
+                    f"Fetching field settings for {detection.name}")
+                response = self.agent.call_mgmt_api(
+                    f"detection/{detection.uuid}/field_settings")
+
+                signature_fields = []
+                field_mapping = []
+
+                """Call the API to fetch the expected field settings for this detection which includes
+                the fields to extract as observables and the fields to use as signature fields
+                If the API call fails, skip the detection run entirely and log an error
+                If the API call succeeds but the response is not valid JSON, skip the detection run
+                If the result of the API call is empty signature fields or fields default to using the
+                defaults from the input
+                """
+                if response.status_code == 200:
+                    try:
+                        field_settings = response.json()
+                        if 'signature_fields' in field_settings and len(field_settings['signature_fields']) > 0:
+                            signature_fields = field_settings['signature_fields']
+                        if 'fields' in field_settings and len(field_settings['fields']) > 0:
+                            field_mapping = field_settings
+                    except:
+                        self.logger.error(
+                            f"Failed to parse field settings for {detection.name}")
+                        return
+                else:
+                    self.logger.error(
+                        f"Failed to fetch field settings for {detection.name}")
+                    return
+
+                # Get the input or report an error if the agent doesn't know it
+                if input_uuid in self.inputs:
+                    _input = self.inputs[input_uuid]
+                else:
+                    # TODO: Add a call to insert a reflex-detections-log record
+                    self.logger.error(
+                        f"Detection {detection.name} attempted to use source {input_uuid} but no input found")
+                    return
+
+                # If the length of signature fields or field_mapping is 0 use the settings from the input
+                if len(signature_fields) == 0:
+                    signature_fields = _input['config']['signature_fields']
+                if len(field_mapping) == 0:
+                    field_mapping = _input['config']['fields']
+
+                # Get the credential or report an error if the agent doesn't know it
+                if _input['credential'] in self.credentials:
+                    credential = self.credentials[_input['credential']]
+                else:
+                    # TODO: Add a call to insert a reflex-detections-log record
+                    self.logger.error(
+                        f"Detection {detection.name} attempted to use credential {_input['credential']} but no credential found")
+                    return
                 self.logger.info(
                     f"Running detection {detection.name} using {_input['name']} ({_input['uuid']}) and credential {_input['credential']} - Lookbehind {detection.lookbehind} minutes.")
 
