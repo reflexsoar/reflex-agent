@@ -67,8 +67,10 @@ class Detection(JSONSerializable):
                 # If minutes since is greater than 24 hours don't go beyond that
                 # TODO: Convert 60*24 to a detector configuration item
                 if minutes_since > catchup_period:
+                    print(f"Adjusting lookbehind for {self.name} from {self.lookbehind} to {math.ceil(self.lookbehind+catchup_period)}")
                     self.lookbehind = math.ceil(self.lookbehind+catchup_period)
                 elif minutes_since > self.lookbehind:
+                    print(f"Minutes since is {minutes_since} which is greater than {self.lookbehind}.  Adjusting lookbehind for {self.name} from {self.lookbehind} to {math.ceil(self.lookbehind+minutes_since)}")
                     self.lookbehind = math.ceil(self.lookbehind+minutes_since)
 
                 return True
