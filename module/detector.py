@@ -7,6 +7,8 @@ import datetime
 from dateutil import parser as date_parser
 from multiprocessing import Process, Event
 from multiprocessing.pool import ThreadPool
+
+from opensearchpy import ConnectionTimeout
 from utils.base import JSONSerializable
 from utils.elasticsearch import Elastic
 from utils.indexed_dict import IndexedDict
@@ -1063,7 +1065,7 @@ class Detector(Process):
                 If the result of the API call is empty signature fields or fields default to using the
                 defaults from the input
                 """
-                if response.status_code == 200:
+                if response and response.status_code == 200:
                     try:
                         field_settings = response.json()
                         if 'signature_fields' in field_settings and len(field_settings['signature_fields']) > 0:
@@ -1255,8 +1257,17 @@ class Detector(Process):
                         # Send the detection hits as events to the API
                         self.agent.process_events(docs, True)
 
+        except ConnectionTimeout as e:
+            self.logger.error(f"Detection {detection.name} encountered an error: {e}")
+            update_payload = {
+                'warnings': ['timeout-error']
+            }
+            self.agent.update_detection(
+                detection.uuid, payload=update_payload)
         except Exception as e:
             self.logger.error(f"Detection {detection.name} encountered an error: {e}")
+            
+
 
     def run_rules(self):
         """
