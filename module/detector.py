@@ -352,10 +352,15 @@ class Detector(Process):
                 for bucket in response['aggregations']['overtime']['buckets']:
                     events_over_time[bucket['key_as_string']
                                      ] = bucket['doc_count']
+                    
+                # Sum all the buckets to get total_hits
+                total_hits = 0
+                for bucket in response['aggregations']['overtime']['buckets']:
+                    total_hits += bucket['doc_count']
 
                 update_payload = {
                     'hits_over_time': json.dumps(events_over_time),
-                    'average_hits_per_day': math.ceil(response['hits']['total']['value'] / DAYS),
+                    'average_hits_per_day': math.ceil(total_hits / DAYS),
                     'assess_rule': False,
                     'last_assessed': datetime.datetime.utcnow().isoformat()
                 }
