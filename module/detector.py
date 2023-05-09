@@ -1065,7 +1065,7 @@ class Detector(Process):
                 If the result of the API call is empty signature fields or fields default to using the
                 defaults from the input
                 """
-                if response.status_code == 200:
+                if response and response.status_code == 200:
                     try:
                         field_settings = response.json()
                         if 'signature_fields' in field_settings and len(field_settings['signature_fields']) > 0:
