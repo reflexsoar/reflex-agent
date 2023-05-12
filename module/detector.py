@@ -69,10 +69,12 @@ class Detection(JSONSerializable):
                 # If minutes since is greater than 24 hours don't go beyond that
                 # TODO: Convert 60*24 to a detector configuration item
                 if minutes_since > catchup_period:
-                    print(f"Adjusting lookbehind for {self.name} from {self.lookbehind} to {math.ceil(self.lookbehind+catchup_period)}")
+                    print(
+                        f"Adjusting lookbehind for {self.name} from {self.lookbehind} to {math.ceil(self.lookbehind+catchup_period)}")
                     self.lookbehind = math.ceil(self.lookbehind+catchup_period)
                 elif minutes_since > self.lookbehind:
-                    print(f"Minutes since is {minutes_since} which is greater than {self.lookbehind}.  Adjusting lookbehind for {self.name} from {self.lookbehind} to {math.ceil(self.lookbehind+minutes_since)}")
+                    print(
+                        f"Minutes since is {minutes_since} which is greater than {self.lookbehind}.  Adjusting lookbehind for {self.name} from {self.lookbehind} to {math.ceil(self.lookbehind+minutes_since)}")
                     self.lookbehind = math.ceil(self.lookbehind+minutes_since)
 
                 return True
@@ -352,7 +354,7 @@ class Detector(Process):
                 for bucket in response['aggregations']['overtime']['buckets']:
                     events_over_time[bucket['key_as_string']
                                      ] = bucket['doc_count']
-                    
+
                 # Sum all the buckets to get total_hits
                 total_hits = 0
                 for bucket in response['aggregations']['overtime']['buckets']:
@@ -583,7 +585,156 @@ class Detector(Process):
         """
         Runs a match rule (rule_type: 5) against the log source
         """
-        raise NotImplementedError
+
+        docs = []
+        query_time = 0
+        scroll_size = 0
+        start_execution_timer = datetime.datetime.utcnow()
+
+        # Create a connection to Elasticsearch
+        elastic = Elastic(
+            _input['config'], _input['field_mapping'], credential)
+
+        query = {
+            "query": {
+                "bool": {
+                    "must": [
+                        {"query_string": {
+                            "query": detection.query['query']}},
+                        {"range": {
+                            "@timestamp": {"gte": "now-{}m".format(detection.lookbehind)}}}
+                    ]
+                }
+            },
+            "size": 0
+        }
+
+        # If there are exclusions/exceptions add them to the query
+        if hasattr(detection, 'exceptions') and detection.exceptions != None:
+            query["query"]["bool"]["must_not"] = []
+            for exception in detection.exceptions:
+
+                if 'list' in exception and exception['list']['uuid'] != None:
+                    list_values = self.agent.get_list_values(
+                        exception['list']['uuid'])
+                    exception['values'] = list_values
+
+                query["query"]["bool"]["must_not"].append(
+                    {
+                        "terms": {
+                            f"{exception['field']}": exception['values']
+                        }
+                    }
+                )
+
+        # Get the indicator config
+        indicator_config = detection.indicator_match_config
+        if not indicator_config['key_field']:
+            self.logger.error(
+                f"Indicator match rule {detection.uuid} has no key_field configured")
+            return
+
+        # Create an aggregation for the source_field
+        query["aggs"] = {
+            "indicator": {
+                "terms": {
+                    "field": indicator_config['key_field'],
+                    "size": 10000
+                }
+            }
+        }
+
+        # Run the query
+        try:
+            matched_indicators = []
+            response = elastic.conn.search(
+                index=_input['config']['index'], body=query)
+            if response and response['hits']['total']['value'] > 0:
+
+                # Get the list of indicator values
+                indicator_values = [
+                    bucket['key'] for bucket in response['aggregations']['indicator']['buckets']]
+
+                # Check the Intel List for matches
+                matched_indicators = self.agent.check_intel_list_values(
+                    detection.indicator_match_config['intel_list']['uuid'], values=indicator_values)
+
+                del query['aggs']
+                del query['size']
+
+                # If there are matches, run a query to get the events
+                if len(matched_indicators) > 0:
+
+                    query['query']['bool']['must'].append(
+                        {
+                            'terms': {
+                                f"{detection.indicator_match_config['key_field']}": matched_indicators
+                            }
+                        }
+                    )
+
+                    # Run the query again to get the events
+                    response = elastic.conn.search(
+                        index=_input['config']['index'], body=query, scroll='30s')
+                    
+                    scroll_id = response['_scroll_id']
+                    scroll_size = response['hits']['total']['value']
+                    query_time += response['took']
+
+                    # Get the first page of results
+                    docs += response['hits']['hits']
+
+                    # Get the rest of the pages
+                    while (scroll_size > 0):
+                        response = elastic.conn.scroll(
+                            scroll_id=scroll_id, scroll='30s')
+                        scroll_id = response['_scroll_id']
+                        scroll_size = len(response['hits']['hits'])
+                        query_time += response['took']
+                        docs += response['hits']['hits']
+
+            # If there are hits, process them as events
+            if len(docs) > 0:
+                docs = elastic.parse_events(docs, title=detection.name, signature_values=[
+                                            detection.detection_id], risk_score=detection.risk_score)
+
+                for doc in docs:
+                    doc.description = getattr(
+                        detection, 'description', 'No description provided') or 'No description provided'
+                    doc.tags += getattr(detection, 'tags') or []
+                    doc.severity = getattr(detection, 'severity', 1) or 1
+                    doc.detection_id = getattr(detection, 'uuid', None) or None
+                    doc.input_uuid = _input['uuid']
+
+            update_payload = {
+                'last_run': detection.last_run,
+                'hits': len(docs)
+            }
+
+            # Calculate how long the entire detection took to run, this helps identify
+            # bottlenecks outside the ES query times
+            end_execution_timer = datetime.datetime.utcnow()
+            total_execution_time = (
+                end_execution_timer - start_execution_timer).total_seconds()*1000
+
+            update_payload['time_taken'] = total_execution_time
+            update_payload['query_time_taken'] = query_time
+
+            if hasattr(detection, 'total_hits') and detection.total_hits != None:
+                update_payload['total_hits'] = detection.total_hits + len(docs)
+            else:
+                update_payload['total_hits'] = len(docs)
+
+            if len(docs) > 0:
+                self.agent.process_events(docs, True)
+                update_payload['last_hit'] = datetime.datetime.utcnow().isoformat()
+
+            self.agent.update_detection(detection.uuid, payload=update_payload)
+                
+                
+
+        except Exception as e:
+            self.logger.error(f"Error assessing rule {detection.name}: {e}")
 
     def match_rule(self, detection):
         """
@@ -1263,16 +1414,16 @@ class Detector(Process):
                         self.agent.process_events(docs, True)
 
         except ConnectionTimeout as e:
-            self.logger.error(f"Detection {detection.name} encountered an error: {e}")
+            self.logger.error(
+                f"Detection {detection.name} encountered an error: {e}")
             update_payload = {
                 'warnings': ['timeout-error']
             }
             self.agent.update_detection(
                 detection.uuid, payload=update_payload)
         except Exception as e:
-            self.logger.error(f"Detection {detection.name} encountered an error: {e}")
-            
-
+            self.logger.error(
+                f"Detection {detection.name} encountered an error: {e}")
 
     def run_rules(self):
         """
