@@ -440,6 +440,22 @@ class Agent(object):
         if response and response.status_code != 200:
             self.logger.error(f"Failed to update detection {uuid}. API response code {response.status_code}, {response.text}")
 
+    
+    def check_intel_list_values(self, list_uuid, values):
+        '''
+        Checks multiple values against an intel list to see if they appear
+        in that list
+        '''
+        payload = {
+            'values': values
+        }
+        matches = []
+
+        response = self.call_mgmt_api(f"list/test/{list_uuid}", data=payload, method='POST')
+        if response and response.status_code == 200:
+            [matches.append(k) for k in response.json()]
+        return matches            
+
 
     def download_plugins(self):
         '''
