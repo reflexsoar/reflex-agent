@@ -5,12 +5,14 @@ on:
   push:
     branches:
       - 'main'
+      - 'master'
       - 'dev'
     tags:
       - '*'
   pull_request:
     branches:
       - 'main'
+      - 'master'
       - 'dev'
 
 # permissions are needed if pushing to ghcr.io
