@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
+import os
 import json
 import math
 import time
@@ -9,6 +10,7 @@ from multiprocessing import Process, Event
 from multiprocessing.pool import ThreadPool
 
 from opensearchpy import ConnectionTimeout
+from opensearchpy.helpers import bulk
 from utils.base import JSONSerializable
 from utils.elasticsearch import Elastic
 from utils.indexed_dict import IndexedDict
@@ -128,6 +130,16 @@ class Detector(Process):
         self.detection_rules = []
         self.should_exit = Event()
         self.new_term_state_table = {}
+
+    def writeback(self, conn, events):
+        # If the environment variable for writeback_index is set, write the results to the index
+        # using the bulk helper and reusing the elastic.conn connection object
+        events = [
+            {'test': 'test'}
+        ]
+        if os.getenv('REFLEX_DETECTIONS_WRITEBACK_INDEX') != None:
+            self.logger.info(f"Writing {len(events)} events to {os.getenv('REFLEX_DETECTIONS_WRITEBACK_INDEX')}")
+            bulk(conn, events, index=os.getenv('REFLEX_DETECTIONS_WRITEBACK_INDEX'))
 
     def set_new_term_state_entry(self, detection_id, field, terms):
         '''
@@ -573,6 +585,11 @@ class Detector(Process):
             update_payload['total_hits'] = len(docs)
 
         if len(hits) > 0:
+
+            # Write the docs to Elasticsearch if there are any
+            # and the writeback is enabled
+            self.writeback(elastic.conn, hits)
+
             self.agent.process_events(hits, True)
             update_payload['last_hit'] = datetime.datetime.utcnow().isoformat()
 
@@ -726,12 +743,15 @@ class Detector(Process):
                 update_payload['total_hits'] = len(docs)
 
             if len(docs) > 0:
+
+                # Write the docs to Elasticsearch if there are any
+                # and the writeback is enabled
+                self.writeback(elastic.conn, docs)
+
                 self.agent.process_events(docs, True)
                 update_payload['last_hit'] = datetime.datetime.utcnow().isoformat()
 
             self.agent.update_detection(detection.uuid, payload=update_payload)
-                
-                
 
         except Exception as e:
             self.logger.error(f"Error assessing rule {detection.name}: {e}")
@@ -996,6 +1016,11 @@ class Detector(Process):
             update_payload['total_hits'] = len(docs)
 
         if len(docs) > 0:
+
+            # Write the docs to Elasticsearch if there are any
+            # and the writeback is enabled
+            self.writeback(elastic.conn, docs)
+
             self.agent.process_events(docs, True)
             update_payload['last_hit'] = datetime.datetime.utcnow().isoformat()
 
@@ -1143,6 +1168,11 @@ class Detector(Process):
             update_payload['total_hits'] = len(docs)
 
         if len(docs) > 0:
+
+            # Write the docs to Elasticsearch if there are any
+            # and the writeback is enabled
+            self.writeback(elastic.conn, docs)
+
             self.agent.process_events(docs, True)
             update_payload['last_hit'] = datetime.datetime.utcnow().isoformat()
 
@@ -1406,6 +1436,10 @@ class Detector(Process):
                         # Update the detection with the meta information from this run
                         self.agent.update_detection(
                             detection.uuid, payload=update_payload)
+                        
+                        # Write the docs to Elasticsearch if there are any
+                        # and the writeback is enabled
+                        self.writeback(elastic.conn, docs)
 
                         # Close the connection to Elasticsearch
                         elastic.conn.transport.close()
