@@ -1,5 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor
 import os
+import uuid
 import json
 import math
 import time
@@ -1116,7 +1117,15 @@ class Detector(Process):
             hit = self.value_check(hit_count, operator, threshold)
 
             if hit:
-                docs += res['hits']['hits']
+                if operator in ['==', "<", "<=", "!="] and hit_count == 0:
+                    docs += [{
+                        '_source': {
+                            'message': 'No results found',
+                            '_id': uuid.uuid4(),
+                        }
+                    }]
+                else:
+                    docs += res['hits']['hits']
 
         else:
 
@@ -1128,14 +1137,30 @@ class Detector(Process):
                     hit = self.value_check(hit_count, operator, threshold)
 
                     if hit:
-                        docs += bucket['doc']['hits']['hits']
+                        if operator in ['==', "<", "<=", "!="] and hit_count == 0:
+                            docs += [{
+                                '_source': {
+                                    'message': 'No results found',
+                                    '_id': uuid.uuid4(),
+                                }
+                            }]
+                        else:
+                            docs += bucket['doc']['hits']['hits']
             else:
                 hit_count = len(buckets)
                 hit = self.value_check(hit_count, operator, threshold)
 
                 if hit:
-                    for bucket in buckets:
-                        docs += bucket['doc']['hits']['hits']
+                    if operator in ['==', "<", "<=", "!="] and hit_count == 0:
+                        docs += [{
+                            '_source': {
+                                'message': 'No results found',
+                                '_id': uuid.uuid4(),
+                            }
+                        }]
+                    else:
+                        for bucket in buckets:
+                            docs += bucket['doc']['hits']['hits']
 
         docs = elastic.parse_events(docs, title=detection.name, signature_values=[
                                     detection.detection_id], risk_score=detection.risk_score)
