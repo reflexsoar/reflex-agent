@@ -1102,6 +1102,13 @@ class Detector(Process):
             }
 
         docs = []
+        zero_hit_doc = {
+            '_source': {
+                'message': 'No results found',
+                '_id': str(uuid.uuid4()),
+                '@timestamp': datetime.datetime.utcnow().isoformat()
+            }
+        }
         query_time = 0
         scroll_size = 0
         operator = detection.threshold_config['operator']
@@ -1118,12 +1125,7 @@ class Detector(Process):
 
             if hit:
                 if operator in ['==', "<", "<=", "!="] and hit_count == 0:
-                    docs += [{
-                        '_source': {
-                            'message': 'No results found',
-                            '_id': uuid.uuid4(),
-                        }
-                    }]
+                    docs += [zero_hit_doc]
                 else:
                     docs += res['hits']['hits']
 
@@ -1138,12 +1140,7 @@ class Detector(Process):
 
                     if hit:
                         if operator in ['==', "<", "<=", "!="] and hit_count == 0:
-                            docs += [{
-                                '_source': {
-                                    'message': 'No results found',
-                                    '_id': uuid.uuid4(),
-                                }
-                            }]
+                            docs += [zero_hit_doc]
                         else:
                             docs += bucket['doc']['hits']['hits']
             else:
@@ -1152,12 +1149,7 @@ class Detector(Process):
 
                 if hit:
                     if operator in ['==', "<", "<=", "!="] and hit_count == 0:
-                        docs += [{
-                            '_source': {
-                                'message': 'No results found',
-                                '_id': uuid.uuid4(),
-                            }
-                        }]
+                        docs += [zero_hit_doc]
                     else:
                         for bucket in buckets:
                             docs += bucket['doc']['hits']['hits']
