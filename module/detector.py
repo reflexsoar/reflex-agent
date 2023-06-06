@@ -1,5 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor
 import os
+import uuid
 import json
 import math
 import time
@@ -503,7 +504,7 @@ class Detector(Process):
                 value = message.get(element)
                 return value if len(args) == 1 else self.get_nested_field(value, args[1:])
 
-    def mismatch_rule(self, detection, credential, _input):
+    def mismatch_rule(self, detection, credential, _input, signature_fields=[]):
         """
         Runs a field mismatch rule (rule_type: 3) against a log source
         """
@@ -598,7 +599,7 @@ class Detector(Process):
         # Close the connection to Elasticsearch
         elastic.conn.transport.close()
 
-    def indicator_match_rule(self, detection, credential, _input):
+    def indicator_match_rule(self, detection, credential, _input, signature_fields=[]):
         """
         Runs a match rule (rule_type: 5) against the log source
         """
@@ -792,7 +793,7 @@ class Detector(Process):
             self.logger.error(f"Error comparing values: {e}")
             return False
 
-    def new_terms_rule(self, detection, credential, _input):
+    def new_terms_rule(self, detection, credential, _input, signature_fields=[]):
         """
         Runs a terms aggregation using a base query and aggregation field and 
         stores the terms in a base64 encoded sorted list and also stores a 
@@ -1026,7 +1027,7 @@ class Detector(Process):
 
         self.agent.update_detection(detection.uuid, payload=update_payload)
 
-    def threshold_rule(self, detection, credential, _input):
+    def threshold_rule(self, detection, credential, _input, signature_fields=[]):
         """
         Runs a base query and determines if the threshold is above a certain value
         """
@@ -1035,7 +1036,7 @@ class Detector(Process):
 
         # Create a connection to Elasticsearch
         elastic = Elastic(
-            _input['config'], _input['field_mapping'], credential)
+            _input['config'], _input['field_mapping'], credential, signature_fields=signature_fields)
 
         # If the detection has a max_events configured and it is not greater than what the
         # agent is configured to allow, use the configured value
@@ -1082,8 +1083,10 @@ class Detector(Process):
 
         # Change the query if the threshold is based off a key field
         has_key_field = False
+        key_field = None
         if detection.threshold_config['key_field']:
             has_key_field = True
+            key_field = detection.threshold_config['key_field']
             query["size"] = 0
             query["aggs"] = {
                 detection.threshold_config['key_field']: {
@@ -1101,10 +1104,23 @@ class Detector(Process):
             }
 
         docs = []
+        zero_hit_doc = {
+            '_source': {
+                'message': 'No results found',
+                '_id': str(uuid.uuid4()),
+                '@timestamp': datetime.datetime.utcnow().isoformat()
+            }
+        }
         query_time = 0
         scroll_size = 0
         operator = detection.threshold_config['operator']
         threshold = detection.threshold_config['threshold']
+
+        if has_key_field:
+
+            if operator in ['==', "<", "<=", "!="] and threshold == 0:
+                query["aggs"][detection.threshold_config['key_field']]['terms']['min_doc_count'] = 0
+                query["aggs"][detection.threshold_config['key_field']]['terms']['size'] = 10000
 
         res = elastic.conn.search(
             index=_input['config']['index'], body=query)
@@ -1116,10 +1132,17 @@ class Detector(Process):
             hit = self.value_check(hit_count, operator, threshold)
 
             if hit:
-                docs += res['hits']['hits']
+                if operator in ['==', "<", "<=", "!="] and hit_count == 0:
+                    docs += [{
+                                '_source': {
+                                    'message': f"No results found.",
+                                    '_id': str(uuid.uuid4()),
+                                    '@timestamp': datetime.datetime.utcnow().isoformat()
+                            }}]
+                else:
+                    docs += res['hits']['hits']
 
         else:
-
             buckets = res['aggregations'][detection.threshold_config['key_field']]['buckets']
 
             if 'per_field' in detection.threshold_config and detection.threshold_config['per_field']:
@@ -1128,14 +1151,33 @@ class Detector(Process):
                     hit = self.value_check(hit_count, operator, threshold)
 
                     if hit:
-                        docs += bucket['doc']['hits']['hits']
+                        if operator in ['==', "<", "<=", "!="] and hit_count == 0:
+                            docs += [{
+                                '_source': {
+                                    'message': f"No results found for {bucket['key']}",
+                                    '_id': str(uuid.uuid4()),
+                                    '@timestamp': datetime.datetime.utcnow().isoformat(),
+                                    key_field: bucket['key']
+                            }}]
+                        else:
+                            docs += bucket['doc']['hits']['hits']
             else:
                 hit_count = len(buckets)
                 hit = self.value_check(hit_count, operator, threshold)
 
                 if hit:
-                    for bucket in buckets:
-                        docs += bucket['doc']['hits']['hits']
+                    if operator in ['==', "<", "<=", "!="] and hit_count == 0: 
+                        for bucket in buckets:
+                            docs += [{
+                                '_source': {
+                                    'message': f"No results found for {bucket['key']}",
+                                    '_id': str(uuid.uuid4()),
+                                    '@timestamp': datetime.datetime.utcnow().isoformat(),
+                                    key_field: bucket['key']
+                            }}]
+                    else:
+                        for bucket in buckets:
+                            docs += bucket['doc']['hits']['hits']
 
         docs = elastic.parse_events(docs, title=detection.name, signature_values=[
                                     detection.detection_id], risk_score=detection.risk_score)
@@ -1322,7 +1364,7 @@ class Detector(Process):
 
                     if detection.rule_type != 0:
                         rule_types[detection.rule_type](
-                            detection, credential, _input)
+                            detection, credential, _input, signature_fields)
 
                     if detection.rule_type == 0:
 
