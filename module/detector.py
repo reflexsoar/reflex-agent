@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
+import re
 import os
 import uuid
 import json
@@ -1263,6 +1264,40 @@ class Detector(Process):
             self.logger.info(
                 f"{detection.name} ({detection.uuid}) - Total Hits {len(docs)}")
         return docs, query_time
+    
+    def variable_replacement(self, query):
+        """
+        Replaces variables in the query with their values for example
+        source.ip: ${intel:listname} will be replaced with the values of the intel list
+        like source:ip (192.168.1.1 OR 192.168.1.1)
+        """
+
+        # Declare the type of variables we support
+        variable_types = ['intel']
+
+        # Create a regular expression to detect the variables they are formatted
+        # like ${type:setting}
+        variable_regex = re.compile(r"\$\{([a-zA-Z0-9_]+):([a-zA-Z0-9_\s]+)\}")
+
+        # Find all the variables in the query
+        variables = variable_regex.findall(query)
+
+        # Loop through the variables and replace them with their values
+        for variable in variables:
+            var_type, var_setting = variable
+            var_string = f"${{{var_type}:{var_setting}}}"
+            var_values = []
+            if var_type in variable_types:
+
+                if var_type == 'intel':
+                    var_values = self.agent.get_list_values(name=var_setting)
+
+                variable_values = " OR ".join(var_values)
+                if len(var_values) > 1:
+                    variable_values = f"({variable_values})"
+                query = query.replace(var_string, variable_values)
+        
+        return query
 
     def execute(self, rule):
         """
@@ -1332,6 +1367,10 @@ class Detector(Process):
                     self.logger.error(
                         f"Detection {detection.name} attempted to use credential {_input['credential']} but no credential found")
                     return
+                
+                # Massage the query to replace variables with their values
+                detection.query['query'] = self.variable_replacement(detection.query['query'])
+
                 self.logger.info(
                     f"Running detection {detection.name} using {_input['name']} ({_input['uuid']}) and credential {_input['credential']} - Lookbehind {detection.lookbehind} minutes.")
 
