@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
+import copy
 import re
 import os
 import uuid
@@ -1105,23 +1106,35 @@ class Detector(Process):
             }
 
         docs = []
-        zero_hit_doc = {
-            '_source': {
-                'message': 'No results found',
-                '_id': str(uuid.uuid4()),
-                '@timestamp': datetime.datetime.utcnow().isoformat()
-            }
-        }
+        learned_keys = []
         query_time = 0
         scroll_size = 0
         operator = detection.threshold_config['operator']
         threshold = detection.threshold_config['threshold']
 
+        # We have to first learn the keys and then run the query again
+        if operator in ['==', "<", "<=", "!="] and threshold == 0 and has_key_field:
+
+            # Copy the query variable to a new variable so we can use it again but as a new object
+            query_copy = copy.deepcopy(query)
+
+            # Set the time range to 7 days ago
+            # TODO: Set this to a learning period in variable
+            query_copy['query']['bool']['must'][1]['range']['@timestamp']['gte'] = "now-14d"
+
+            res = elastic.conn.search(
+                index=_input['config']['index'], body=query_copy)
+            
+            # If there are aggregations, we need to add the keys to the learned_keys list
+            if 'aggregations' in res:
+                for bucket in res['aggregations'][key_field]['buckets']:
+                    learned_keys.append(bucket['key'])
+
         if has_key_field:
 
             if operator in ['==', "<", "<=", "!="] and threshold == 0:
-                query["aggs"][detection.threshold_config['key_field']]['terms']['min_doc_count'] = 0
-                query["aggs"][detection.threshold_config['key_field']]['terms']['size'] = 10000
+                # query["aggs"][key_field]['terms']['min_doc_count'] = 0
+                query["aggs"][key_field]['terms']['size'] = 10000
 
         res = elastic.conn.search(
             index=_input['config']['index'], body=query)
@@ -1144,44 +1157,50 @@ class Detector(Process):
                     docs += res['hits']['hits']
 
         else:
-            buckets = res['aggregations'][detection.threshold_config['key_field']]['buckets']
+            buckets = res['aggregations'][key_field]['buckets']
 
             if 'per_field' in detection.threshold_config and detection.threshold_config['per_field']:
-                for bucket in buckets:
-                    hit_count = bucket['doc_count']
-                    hit = self.value_check(hit_count, operator, threshold)
 
-                    if hit:
-                        if operator in ['==', "<", "<=", "!="] and hit_count == 0:
+                if operator in ['=='] and threshold == 0:
+                    bucket_keys = [bucket['key'] for bucket in buckets]
+                    for key in learned_keys:
+                        if key not in bucket_keys:
+                            print(f"No results found for {key} in {bucket_keys}")
                             docs += [{
                                 '_source': {
-                                    'message': f"No results found for {bucket['key']}",
+                                    'message': f"No results found for {key}",
                                     '_id': str(uuid.uuid4()),
                                     '@timestamp': datetime.datetime.utcnow().isoformat(),
-                                    key_field: bucket['key']
+                                    key_field: key
                             }}]
-                        else:
+
+                else:
+                    for bucket in buckets:
+                        hit_count = bucket['doc_count']
+                        hit = self.value_check(hit_count, operator, threshold)
+
+                        if hit:
                             docs += bucket['doc']['hits']['hits']
             else:
                 hit_count = len(buckets)
                 hit = self.value_check(hit_count, operator, threshold)
 
                 if hit:
-                    if operator in ['==', "<", "<=", "!="] and hit_count == 0: 
-                        for bucket in buckets:
-                            docs += [{
-                                '_source': {
-                                    'message': f"No results found for {bucket['key']}",
-                                    '_id': str(uuid.uuid4()),
-                                    '@timestamp': datetime.datetime.utcnow().isoformat(),
-                                    key_field: bucket['key']
-                            }}]
+                    if operator in ['=='] and hit_count == 0:
+                        docs += [{
+                            '_source': {
+                                'message': f"No results found",
+                                '_id': str(uuid.uuid4()),
+                                '@timestamp': datetime.datetime.utcnow().isoformat()
+                        }}]
                     else:
                         for bucket in buckets:
                             docs += bucket['doc']['hits']['hits']
 
         docs = elastic.parse_events(docs, title=detection.name, signature_values=[
                                     detection.detection_id], risk_score=detection.risk_score)
+        
+        
 
         for doc in docs:
             doc.description = getattr(
