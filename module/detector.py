@@ -144,6 +144,14 @@ class Detector(Process):
             self.logger.info(f"Writing {len(events)} events to {os.getenv('REFLEX_DETECTIONS_WRITEBACK_INDEX')}")
             bulk(conn, events, index=os.getenv('REFLEX_DETECTIONS_WRITEBACK_INDEX'))
 
+    @property
+    def drop(self):
+        # If the environment variable for drop_events is set, drop the events
+        if os.getenv('REFLEX_DETECTIONS_DROP_EVENTS') != None:
+            self.logger.info(f"The REFLEX_DETECTIONS_DROP_EVENTS environment variable is set.  Dropping events.")
+            return True
+        return False
+
     def set_new_term_state_entry(self, detection_id, field, terms):
         '''
         Sets the new term state table entry for a detection rule
@@ -593,7 +601,10 @@ class Detector(Process):
             # and the writeback is enabled
             self.writeback(elastic.conn, hits)
 
-            self.agent.process_events(hits, True)
+            # If not dropping the event, process the hits
+            if not self.drop:
+                self.agent.process_events(hits, True)
+
             update_payload['last_hit'] = datetime.datetime.utcnow().isoformat()
 
         self.agent.update_detection(detection.uuid, payload=update_payload)
@@ -783,7 +794,10 @@ class Detector(Process):
             # and the writeback is enabled
             self.writeback(elastic.conn, docs)
 
-            self.agent.process_events(docs, True)
+            # If not dropping the event, process the hits
+            if not self.drop:
+                self.agent.process_events(docs, True)
+
             update_payload['last_hit'] = datetime.datetime.utcnow().isoformat()
 
         self.agent.update_detection(detection.uuid, payload=update_payload)
@@ -937,7 +951,10 @@ class Detector(Process):
                 # and the writeback is enabled
                 self.writeback(elastic.conn, docs)
 
-                self.agent.process_events(docs, True)
+                # If not dropping the event, process the hits
+                if not self.drop:
+                    self.agent.process_events(docs, True)
+
                 update_payload['last_hit'] = datetime.datetime.utcnow().isoformat()
 
             self.agent.update_detection(detection.uuid, payload=update_payload)
@@ -1210,7 +1227,10 @@ class Detector(Process):
             # and the writeback is enabled
             self.writeback(elastic.conn, docs)
 
-            self.agent.process_events(docs, True)
+            # If not dropping the event, process the hits
+            if not self.drop:
+                self.agent.process_events(docs, True)
+
             update_payload['last_hit'] = datetime.datetime.utcnow().isoformat()
 
         self.agent.update_detection(detection.uuid, payload=update_payload)
@@ -1419,7 +1439,10 @@ class Detector(Process):
             # and the writeback is enabled
             self.writeback(elastic.conn, docs)
 
-            self.agent.process_events(docs, True)
+            # If not dropping the event, process the hits
+            if not self.drop:
+                self.agent.process_events(docs, True)
+
             update_payload['last_hit'] = datetime.datetime.utcnow().isoformat()
 
         self.agent.update_detection(detection.uuid, payload=update_payload)
@@ -1730,7 +1753,9 @@ class Detector(Process):
                         elastic.conn.transport.close()
 
                         # Send the detection hits as events to the API
-                        self.agent.process_events(docs, True)
+                        # If not dropping the event, process the hits
+                        if not self.drop:
+                            self.agent.process_events(docs, True)
 
         except ConnectionTimeout as e:
             self.logger.error(
