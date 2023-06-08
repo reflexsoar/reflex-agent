@@ -231,7 +231,7 @@ class Agent(object):
         self.access_token = os.getenv('ACCESS_TOKEN')
         self.console_url = os.getenv('CONSOLE_URL')
         self.ip = self.agent_ip()
-        self.VERSION_NUMBER = "2023.06.06"
+        self.VERSION_NUMBER = "2023.06.08"
 
         log_levels = {
             'DEBUG': logging.DEBUG,
@@ -348,10 +348,19 @@ class Agent(object):
             self.logger.error("An error occured while trying to connect to the management API. {}".format(str(e)))
             return None
         
-    def get_list_values(self, uuid):
+    def get_list_values(self, uuid=None, name=None):
+        '''
+        Fetches the values of a list by UUID or name
+        '''
+
+        if not uuid and not name:
+            return []
 
         # Fetch the list values
-        response = self.call_mgmt_api(f'list/values?list={uuid}&page_size=10000')
+        if uuid:
+            response = self.call_mgmt_api(f'list/values?list={uuid}&page_size=10000')
+        if name:
+            response = self.call_mgmt_api(f'list/values?list_name__like={name}&page_size=10000')
         if response and response.status_code == 200:
             return [v['value'] for v in response.json()['values']]
         else:
