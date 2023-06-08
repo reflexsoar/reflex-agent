@@ -12,7 +12,7 @@ from dateutil import parser as date_parser
 from multiprocessing import Process, Event
 from multiprocessing.pool import ThreadPool
 
-from opensearchpy import ConnectionTimeout
+from opensearchpy import ConnectionTimeout, NotFoundError
 from opensearchpy.helpers import bulk
 from utils.base import JSONSerializable
 from utils.elasticsearch import Elastic
@@ -506,7 +506,7 @@ class Detector(Process):
                 value = message.get(element)
                 return value if len(args) == 1 else self.get_nested_field(value, args[1:])
 
-    def mismatch_rule(self, detection, credential, _input, signature_fields=[]):
+    def mismatch_rule(self, detection, credential, _input, signature_fields=[], field_mapping={}):
         """
         Runs a field mismatch rule (rule_type: 3) against a log source
         """
@@ -601,7 +601,194 @@ class Detector(Process):
         # Close the connection to Elasticsearch
         elastic.conn.transport.close()
 
-    def indicator_match_rule(self, detection, credential, _input, signature_fields=[]):
+    def data_source_monitor_rule(self, detection, credential, _input, signature_fields=[], field_mapping={}):
+        '''
+        Runs a data source monitor rule (rule_type: 6) against a log source
+        '''
+
+        start_execution_timer = datetime.datetime.utcnow()
+        query_time = 0
+
+        elastic = Elastic(
+            _input['config'], field_mapping, credential, signature_fields=signature_fields)
+
+        # Fetch a list of all the data sources to monitor
+        data_sources = []
+        docs = []
+        is_delta = detection.source_monitor_config['delta_change']
+        operator = detection.source_monitor_config['operator']
+
+        if 'source_lists' not in detection.source_monitor_config:
+            detection.source_monitor_config['source_lists'] = []
+        if 'excluded_source_lists' not in detection.source_monitor_config:
+            detection.source_monitor_config['excluded_source_lists'] = []
+        if 'excluded_sources' not in detection.source_monitor_config:
+            detection.source_monitor_config['excluded_sources'] = []
+        if 'data_sources' not in detection.source_monitor_config:
+            detection.source_monitor_config['data_sources'] = []
+
+        data_sources.extend(detection.source_monitor_config['data_sources'])
+
+        # If the detection has any data sources in intel lists add them to the list
+        if len(detection.source_monitor_config['source_lists']) > 0:
+            for source_list in detection.source_monitor_config['source_lists']:
+                data_sources.extend(self.agent.get_list_values(uuid=source_list['uuid']))
+
+        # If the detection has any data sources to exclude remove them from the list
+        if len(detection.source_monitor_config['excluded_sources']) > 0:
+            for excluded_source in detection.source_monitor_config['excluded_sources']:
+                if excluded_source in data_sources:
+                    data_sources.remove(excluded_source)
+
+        # If the detection has any data sources to exclude in intel lists remove them from the list
+        if len(detection.source_monitor_config['excluded_source_lists']) > 0:
+            for excluded_source_list in detection.source_monitor_config['excluded_source_lists']:
+                for source in self.agent.get_list_values(uuid=excluded_source_list['uuid']):
+                    if source in data_sources:
+                        data_sources.remove(source)
+        
+        # Dedupe the list of data sources
+        data_sources = list(set(data_sources))
+
+        # Run the count query against each data source and compare it to the threshold
+        for data_source in data_sources:
+            previous_period = 0
+
+            # If the data source monitor is set to compare against a previous period
+            # learn the data from the previous period and compare it to the current period
+            if is_delta:
+                delta_window = detection.source_monitor_config['delta_window']
+                try:
+                    minutes_ago = delta_window*1440+detection.lookbehind
+                    res = elastic.conn.count(
+                        index=data_source,
+                        body={
+                            "query": {
+                                "range": {
+                                    "@timestamp": {
+                                        "gte": f"now-{minutes_ago}m",
+                                        "lte": f"now-{delta_window}d"
+                                    }
+                                }
+                            }
+                        }
+                    )
+
+                    if 'count' in res:
+                        previous_period = res['count']
+                    if 'took' in res:
+                        query_time += res['took']
+
+                except NotFoundError:
+                    self.logger.warning(f"Failed to run count query against {data_source} - Data Source Not Found")
+                    docs.append({
+                                '_source': {
+                                    'message': f"Failed to run count query against {data_source} - Data Source Not Found",
+                                    '_id': str(uuid.uuid4()),
+                                    '@timestamp': datetime.datetime.utcnow().isoformat(),
+                                    'data_source': data_source
+                            }})
+                    continue
+                except Exception as e:
+                    self.logger.warning(f"Failed to run count query against {data_source} - {e}")
+                    continue
+
+            count = 0
+            try:
+                res = elastic.conn.count(
+                    index=data_source,
+                    body={
+                        "query": {
+                            "range": {
+                                "@timestamp": {
+                                    "gte": f"now-{detection.lookbehind}m",
+                                    "lte": "now"
+                                }
+                            }
+                        }
+                    }
+                )
+
+                if 'count' in res:
+                    count = res['count']
+                if 'took' in res:
+                    query_time += res['took']
+
+            except NotFoundError:
+                self.logger.warning(f"Failed to run count query against {data_source} - Data Source Not Found")
+                docs.append({
+                                '_source': {
+                                    'message': f"Failed to run count query against {data_source} - Data Source Not Found",
+                                    '_id': str(uuid.uuid4()),
+                                    '@timestamp': datetime.datetime.utcnow().isoformat(),
+                                    'data_source': data_source
+                            }})
+                continue
+            except Exception as e:
+                self.logger.warning(f"Failed to run count query against {data_source} - {e}")
+                continue
+
+            threshold = detection.source_monitor_config['threshold']
+            
+            if is_delta:
+                as_percentage = detection.source_monitor_config['threshold_as_percent']
+                if as_percentage:
+                    if operator in [">", ">="]:
+                        threshold = previous_period + threshold / 100 * previous_period
+                    else:
+                        threshold = previous_period - threshold / 100 * previous_period
+
+            result = self.value_check(count, operator, threshold)
+            if result:
+                docs.append({
+                    '_source': {
+                        'message': f"Data source {data_source} has {count} events which is {operator} the threshold of {threshold} events",
+                        '_id': str(uuid.uuid4()),
+                        '@timestamp': datetime.datetime.utcnow().isoformat(),
+                        'data_source': data_source
+                }})
+
+        docs = elastic.parse_events(docs, title=detection.name, signature_values=[
+                                    detection.detection_id], risk_score=detection.risk_score)
+
+        for doc in docs:
+            doc.description = getattr(
+                detection, 'description', 'No description provided')
+            doc.tags += getattr(detection, 'tags', [])
+            doc.severity = getattr(detection, 'severity', 1)
+            doc.detection_id = getattr(detection, 'uuid', None)
+            doc.input_uuid = _input['uuid']
+
+        update_payload = {
+                'last_run': detection.last_run,
+                'hits': len(docs)
+            }
+
+        # Calculate how long the entire detection took to run, this helps identify
+        # bottlenecks outside the ES query times
+        end_execution_timer = datetime.datetime.utcnow()
+        total_execution_time = (
+            end_execution_timer - start_execution_timer).total_seconds()*1000
+
+        update_payload['time_taken'] = total_execution_time
+
+        if hasattr(detection, 'total_hits') and detection.total_hits != None:
+            update_payload['total_hits'] = detection.total_hits + len(docs)
+        else:
+            update_payload['total_hits'] = len(docs)
+
+        if len(docs) > 0:
+
+            # Write the docs to Elasticsearch if there are any
+            # and the writeback is enabled
+            self.writeback(elastic.conn, docs)
+
+            self.agent.process_events(docs, True)
+            update_payload['last_hit'] = datetime.datetime.utcnow().isoformat()
+
+        self.agent.update_detection(detection.uuid, payload=update_payload)
+
+    def indicator_match_rule(self, detection, credential, _input, signature_fields=[], field_mapping={}):
         """
         Runs a match rule (rule_type: 5) against the log source
         """
@@ -635,8 +822,7 @@ class Detector(Process):
             for exception in detection.exceptions:
 
                 if 'list' in exception and exception['list']['uuid'] != None:
-                    list_values = self.agent.get_list_values(
-                        exception['list']['uuid'])
+                    list_values = self.agent.get_list_values(uuid=exception['list']['uuid'])
                     exception['values'] = list_values
 
                 query["query"]["bool"]["must_not"].append(
@@ -795,7 +981,7 @@ class Detector(Process):
             self.logger.error(f"Error comparing values: {e}")
             return False
 
-    def new_terms_rule(self, detection, credential, _input, signature_fields=[]):
+    def new_terms_rule(self, detection, credential, _input, signature_fields=[], field_mapping={}):
         """
         Runs a terms aggregation using a base query and aggregation field and 
         stores the terms in a base64 encoded sorted list and also stores a 
@@ -844,7 +1030,7 @@ class Detector(Process):
 
                     if 'list' in exception and exception['list']['uuid'] != None:
                         list_values = self.agent.get_list_values(
-                            exception['list']['uuid'])
+                            uuid=exception['list']['uuid'])
                         exception['values'] = list_values
 
                     query["query"]["bool"]["must_not"].append(
@@ -1029,7 +1215,7 @@ class Detector(Process):
 
         self.agent.update_detection(detection.uuid, payload=update_payload)
 
-    def threshold_rule(self, detection, credential, _input, signature_fields=[]):
+    def threshold_rule(self, detection, credential, _input, signature_fields=[], field_mapping={}):
         """
         Runs a base query and determines if the threshold is above a certain value
         """
@@ -1071,8 +1257,7 @@ class Detector(Process):
             for exception in detection.exceptions:
 
                 if 'list' in exception and exception['list']['uuid'] != None:
-                    list_values = self.agent.get_list_values(
-                        exception['list']['uuid'])
+                    list_values = self.agent.get_list_values(uuid=exception['list']['uuid'])
                     exception['values'] = list_values
 
                 query["query"]["bool"]["must_not"].append(
@@ -1165,7 +1350,6 @@ class Detector(Process):
                     bucket_keys = [bucket['key'] for bucket in buckets]
                     for key in learned_keys:
                         if key not in bucket_keys:
-                            print(f"No results found for {key} in {bucket_keys}")
                             docs += [{
                                 '_source': {
                                     'message': f"No results found for {key}",
@@ -1415,14 +1599,15 @@ class Detector(Process):
                         2: self.metric_rule,
                         3: self.mismatch_rule,
                         4: self.new_terms_rule,
-                        5: self.indicator_match_rule
+                        5: self.indicator_match_rule,
+                        6: self.data_source_monitor_rule
                     }
 
                     detection.last_run = datetime.datetime.utcnow().isoformat()
 
                     if detection.rule_type != 0:
                         rule_types[detection.rule_type](
-                            detection, credential, _input, signature_fields)
+                            detection, credential, _input, signature_fields, field_mapping)
 
                     if detection.rule_type == 0:
 
@@ -1448,7 +1633,7 @@ class Detector(Process):
 
                                 if 'list' in exception and exception['list']['uuid'] != None:
                                     list_values = self.agent.get_list_values(
-                                        exception['list']['uuid'])
+                                        uuid=exception['list']['uuid'])
                                     exception['values'] = list_values
 
                                 query["query"]["bool"]["must_not"].append(
