@@ -314,7 +314,7 @@ class Detector(Process):
         Runs the query against an input as a date histogram query
         '''
 
-        DAYS = 30
+        DAYS = 30  # TODO: Make this configurable
 
         detection = Detection(**rule)
         self.logger.info(f"Assessing rule {detection.name}")
@@ -365,6 +365,23 @@ class Detector(Process):
             },
             "size": 0
         }
+
+        # If there are exclusions/exceptions add them to the query
+        if hasattr(detection, 'exceptions') and detection.exceptions != None:
+            query["query"]["bool"]["must_not"] = []
+            for exception in detection.exceptions:
+
+                if 'list' in exception and exception['list']['uuid'] != None:
+                    list_values = self.agent.get_list_values(uuid=exception['list']['uuid'])
+                    exception['values'] = list_values
+
+                query["query"]["bool"]["must_not"].append(
+                    {
+                        "terms": {
+                            f"{exception['field']}": exception['values']
+                        }
+                    }
+                )
 
         # Run the query
         try:
