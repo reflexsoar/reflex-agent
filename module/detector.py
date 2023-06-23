@@ -16,6 +16,7 @@ from opensearchpy import ConnectionTimeout, NotFoundError
 from opensearchpy.helpers import bulk
 from utils.base import JSONSerializable
 from utils.elasticsearch import Elastic
+from utils.helpers import create_piped_aggregation
 from utils.indexed_dict import IndexedDict
 from .rule import BaseRule
 
@@ -782,9 +783,9 @@ class Detector(Process):
         for doc in docs:
             doc.description = getattr(
                 detection, 'description', 'No description provided')
-            doc.tags += getattr(detection, 'tags', [])
-            doc.severity = getattr(detection, 'severity', 1)
-            doc.detection_id = getattr(detection, 'uuid', None)
+            doc.tags += getattr(detection, 'tags', []) or []
+            doc.severity = getattr(detection, 'severity', 1) or 1
+            doc.detection_id = getattr(detection, 'uuid', None) or None
             doc.input_uuid = _input['uuid']
 
         update_payload = {
