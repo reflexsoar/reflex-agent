@@ -166,7 +166,8 @@ class Elastic(Process):
         return observables
 
 
-    def parse_events(self, hits, title=None, signature_values=[], risk_score=None):
+    def parse_events(self, hits, title=None, signature_values=[], risk_score=None,
+                     time_to_detect=False):
         '''
         Parses events pulled from Elasticsearch and formats them 
         into a JSON array that fits the expected input of the REST API
@@ -223,6 +224,12 @@ class Elastic(Process):
             # Remove duplicate tags
             event.tags = [tag for tag in event.tags if tag not in ['',None,'-']]
             event.tags = list(set(event.tags))
+
+            if time_to_detect:
+                now = datetime.datetime.utcnow().isoformat()
+                if hasattr(event, 'original_date'):
+                    original_date = datetime.datetime.strptime(event.original_date, '%Y-%m-%dT%H:%M:%S')
+                    event.time_to_detect = (now - original_date).total_seconds()
 
             events.append(event)
         

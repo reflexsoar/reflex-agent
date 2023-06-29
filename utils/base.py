@@ -96,8 +96,9 @@ class Event(JSONSerializable):
         self.input_uuid = None
         self.metrics = {
             'agent_pickup_time': None,
-            'agent_bulk_start': None,
+            'agent_bulk_start': None
         }
+        self.time_to_detect = None
 
 
     def get_nested_field(self, message, field):
