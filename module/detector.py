@@ -638,6 +638,9 @@ class Detector(Process):
         start_execution_timer = datetime.datetime.utcnow()
         query_time = 0
 
+        # TODO - Add message and data_source as default signature fields
+        # TODO - Add data_source as a default field_mapping
+
         elastic = Elastic(
             _input['config'], field_mapping, credential, signature_fields=signature_fields)
 
