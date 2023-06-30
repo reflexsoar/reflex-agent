@@ -934,6 +934,9 @@ class Detector(Process):
                         query_time += response['took']
                         docs += response['hits']['hits']
 
+                    # Clear the scroll
+                    elastic.conn.clear_scroll(scroll_id=scroll_id)
+
             # If there are hits, process them as events
             if len(docs) > 0:
                 docs = elastic.parse_events(docs, title=detection.name, signature_values=[
@@ -1312,6 +1315,7 @@ class Detector(Process):
         # Change the query if the threshold is based off a key field
         has_key_field = False
         key_field = None
+        """ # LIVE CODE """
         if detection.threshold_config['key_field']:
             has_key_field = True
             key_field = detection.threshold_config['key_field']
@@ -1330,6 +1334,34 @@ class Detector(Process):
                     }
                 }
             }
+        """ # END LIVE CODE """
+        """
+        # TEST CODE
+        if detection.threshold_config['key_field']:
+            query["size"] = 0
+            has_key_field = True
+
+            # Split the key field if it is a comma separated list, trim whitespace
+            if ',' in detection.threshold_config['key_field']:
+                key_field = [field.strip()
+                             for field in detection.threshold_config['key_field'].split(',')]
+            else:
+                key_field = detection.threshold_config['key_field']
+            
+            if isinstance(key_field, str):
+                query["aggs"] = create_piped_aggregation(
+                    fields=[key_field],
+                    threshold=detection.threshold_config['threshold'],
+                    max_size=detection.threshold_config['max_events'])
+            else:
+                query["aggs"] = create_piped_aggregation(
+                fields=key_field,
+                threshold=detection.threshold_config['threshold'],
+                max_size=detection.threshold_config['max_events'])
+            
+        print(json.dumps(query, indent=2))
+        return []
+        # END TEST CODE """
 
         docs = []
         learned_keys = []
@@ -1506,6 +1538,9 @@ class Detector(Process):
                     res['hits']['hits'], title=detection.name, signature_values=[detection.detection_id], risk_score=detection.risk_score)
 
             scroll_size = len(res['hits']['hits'])
+
+        # Clear the scroll
+        elastic.conn.clear_scroll(scroll_id=scroll_id)
 
         if len(docs) > 0:
             self.logger.info(
@@ -1722,6 +1757,9 @@ class Detector(Process):
                                     time_to_detect=True)
 
                             scroll_size = len(res['hits']['hits'])
+
+                        # Clear the scroll
+                        elastic.conn.clear_scroll(scroll_id=scroll_id)
 
                         self.logger.info(
                             f"{detection.name} ({detection.uuid}) - Total Hits {len(docs)}")
