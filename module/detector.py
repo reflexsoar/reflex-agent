@@ -30,6 +30,12 @@ class Detection(JSONSerializable):
         if kwargs:
             self.__dict__.update(kwargs)
 
+        log_handler = logging.StreamHandler()
+        log_handler.setFormatter(logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+
+        self.logger = logging.getLogger(self.__class__.__name__)
+
     def __repr__(self) -> str:
         return f"Detection({self.__dict__})"
 
@@ -75,11 +81,11 @@ class Detection(JSONSerializable):
                 # If minutes since is greater than 24 hours don't go beyond that
                 # TODO: Convert 60*24 to a detector configuration item
                 if minutes_since > catchup_period:
-                    print(
+                    self.logger.info(
                         f"Adjusting lookbehind for {self.name} from {self.lookbehind} to {math.ceil(self.lookbehind+catchup_period)}")
                     self.lookbehind = math.ceil(self.lookbehind+catchup_period)
                 elif minutes_since > self.lookbehind:
-                    print(
+                    self.logger.info(
                         f"Minutes since is {minutes_since} which is greater than {self.lookbehind}.  Adjusting lookbehind for {self.name} from {self.lookbehind} to {math.ceil(self.lookbehind+minutes_since)}")
                     self.lookbehind = math.ceil(self.lookbehind+minutes_since)
 
@@ -1741,7 +1747,6 @@ class Detector(Process):
                             scroll_size = 0
 
                         # Scroll
-                        self.logger.info(f"{scroll_size}")
                         while (scroll_size > 0):
                             self.logger.info(
                                 f"{detection.name} ({detection.uuid}) - Scrolling Elasticsearch results...")
