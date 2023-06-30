@@ -1735,7 +1735,8 @@ class Detector(Process):
 
                             # Parse the events and extract observables, tags, signature the event
                             docs += elastic.parse_events(
-                                res['hits']['hits'], title=detection.name, signature_values=[detection.detection_id], risk_score=detection.risk_score)
+                                res['hits']['hits'], title=detection.name, signature_values=[detection.detection_id], risk_score=detection.risk_score,
+                                time_to_detect=True)
                         else:
                             scroll_size = 0
 

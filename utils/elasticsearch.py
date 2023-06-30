@@ -226,9 +226,9 @@ class Elastic(Process):
             event.tags = list(set(event.tags))
 
             if time_to_detect:
-                now = datetime.datetime.utcnow().isoformat()
+                now = datetime.datetime.utcnow()
                 if hasattr(event, 'original_date'):
-                    original_date = datetime.datetime.strptime(event.original_date, '%Y-%m-%dT%H:%M:%S')
+                    original_date = datetime.datetime.strptime(event.original_date, '%Y-%m-%dT%H:%M:%S.%f')
                     event.time_to_detect = (now - original_date).total_seconds()
 
             events.append(event)
@@ -281,6 +281,10 @@ class Elastic(Process):
                         logger.info(f"Found {len(res['hits']['hits'])} alerts.")
                         events += self.parse_events(res['hits']['hits'])
                     scroll_size = len(res['hits']['hits'])
+
+            # Clear the scroll window
+            if scroll_id:
+                self.conn.clear_scroll(scroll_id = scroll_id)
 
             return events
 
