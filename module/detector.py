@@ -30,6 +30,12 @@ class Detection(JSONSerializable):
         if kwargs:
             self.__dict__.update(kwargs)
 
+        log_handler = logging.StreamHandler()
+        log_handler.setFormatter(logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+
+        self.logger = logging.getLogger(self.__class__.__name__)
+
     def __repr__(self) -> str:
         return f"Detection({self.__dict__})"
 
@@ -75,11 +81,11 @@ class Detection(JSONSerializable):
                 # If minutes since is greater than 24 hours don't go beyond that
                 # TODO: Convert 60*24 to a detector configuration item
                 if minutes_since > catchup_period:
-                    print(
+                    self.logger.info(
                         f"Adjusting lookbehind for {self.name} from {self.lookbehind} to {math.ceil(self.lookbehind+catchup_period)}")
                     self.lookbehind = math.ceil(self.lookbehind+catchup_period)
                 elif minutes_since > self.lookbehind:
-                    print(
+                    self.logger.info(
                         f"Minutes since is {minutes_since} which is greater than {self.lookbehind}.  Adjusting lookbehind for {self.name} from {self.lookbehind} to {math.ceil(self.lookbehind+minutes_since)}")
                     self.lookbehind = math.ceil(self.lookbehind+minutes_since)
 
@@ -638,6 +644,9 @@ class Detector(Process):
         start_execution_timer = datetime.datetime.utcnow()
         query_time = 0
 
+        # TODO - Add message and data_source as default signature fields
+        # TODO - Add data_source as a default field_mapping
+
         elastic = Elastic(
             _input['config'], field_mapping, credential, signature_fields=signature_fields)
 
@@ -930,6 +939,9 @@ class Detector(Process):
                         scroll_size = len(response['hits']['hits'])
                         query_time += response['took']
                         docs += response['hits']['hits']
+
+                    # Clear the scroll
+                    elastic.conn.clear_scroll(scroll_id=scroll_id)
 
             # If there are hits, process them as events
             if len(docs) > 0:
@@ -1309,6 +1321,7 @@ class Detector(Process):
         # Change the query if the threshold is based off a key field
         has_key_field = False
         key_field = None
+        """ # LIVE CODE """
         if detection.threshold_config['key_field']:
             has_key_field = True
             key_field = detection.threshold_config['key_field']
@@ -1327,6 +1340,34 @@ class Detector(Process):
                     }
                 }
             }
+        """ # END LIVE CODE """
+        """
+        # TEST CODE
+        if detection.threshold_config['key_field']:
+            query["size"] = 0
+            has_key_field = True
+
+            # Split the key field if it is a comma separated list, trim whitespace
+            if ',' in detection.threshold_config['key_field']:
+                key_field = [field.strip()
+                             for field in detection.threshold_config['key_field'].split(',')]
+            else:
+                key_field = detection.threshold_config['key_field']
+            
+            if isinstance(key_field, str):
+                query["aggs"] = create_piped_aggregation(
+                    fields=[key_field],
+                    threshold=detection.threshold_config['threshold'],
+                    max_size=detection.threshold_config['max_events'])
+            else:
+                query["aggs"] = create_piped_aggregation(
+                fields=key_field,
+                threshold=detection.threshold_config['threshold'],
+                max_size=detection.threshold_config['max_events'])
+            
+        print(json.dumps(query, indent=2))
+        return []
+        # END TEST CODE """
 
         docs = []
         learned_keys = []
@@ -1503,6 +1544,9 @@ class Detector(Process):
                     res['hits']['hits'], title=detection.name, signature_values=[detection.detection_id], risk_score=detection.risk_score)
 
             scroll_size = len(res['hits']['hits'])
+
+        # Clear the scroll
+        elastic.conn.clear_scroll(scroll_id=scroll_id)
 
         if len(docs) > 0:
             self.logger.info(
@@ -1697,12 +1741,12 @@ class Detector(Process):
 
                             # Parse the events and extract observables, tags, signature the event
                             docs += elastic.parse_events(
-                                res['hits']['hits'], title=detection.name, signature_values=[detection.detection_id], risk_score=detection.risk_score)
+                                res['hits']['hits'], title=detection.name, signature_values=[detection.detection_id], risk_score=detection.risk_score,
+                                time_to_detect=True)
                         else:
                             scroll_size = 0
 
                         # Scroll
-                        self.logger.info(f"{scroll_size}")
                         while (scroll_size > 0):
                             self.logger.info(
                                 f"{detection.name} ({detection.uuid}) - Scrolling Elasticsearch results...")
@@ -1715,9 +1759,13 @@ class Detector(Process):
                                     f"{detection.name} ({detection.uuid}) - Found {len(res['hits']['hits'])} detection hits.")
                                 # Parse the events and extract observables, tags, signature the event
                                 docs += elastic.parse_events(
-                                    res['hits']['hits'], title=detection.name, signature_values=[detection.detection_id], risk_score=detection.risk_score)
+                                    res['hits']['hits'], title=detection.name, signature_values=[detection.detection_id], risk_score=detection.risk_score,
+                                    time_to_detect=True)
 
                             scroll_size = len(res['hits']['hits'])
+
+                        # Clear the scroll
+                        elastic.conn.clear_scroll(scroll_id=scroll_id)
 
                         self.logger.info(
                             f"{detection.name} ({detection.uuid}) - Total Hits {len(docs)}")

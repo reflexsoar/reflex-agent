@@ -166,7 +166,8 @@ class Elastic(Process):
         return observables
 
 
-    def parse_events(self, hits, title=None, signature_values=[], risk_score=None):
+    def parse_events(self, hits, title=None, signature_values=[], risk_score=None,
+                     time_to_detect=False):
         '''
         Parses events pulled from Elasticsearch and formats them 
         into a JSON array that fits the expected input of the REST API
@@ -224,6 +225,12 @@ class Elastic(Process):
             event.tags = [tag for tag in event.tags if tag not in ['',None,'-']]
             event.tags = list(set(event.tags))
 
+            if time_to_detect:
+                now = datetime.datetime.utcnow()
+                if hasattr(event, 'original_date'):
+                    original_date = datetime.datetime.strptime(event.original_date, '%Y-%m-%dT%H:%M:%S.%f')
+                    event.time_to_detect = (now - original_date).total_seconds()
+
             events.append(event)
         
         return events
@@ -274,6 +281,10 @@ class Elastic(Process):
                         logger.info(f"Found {len(res['hits']['hits'])} alerts.")
                         events += self.parse_events(res['hits']['hits'])
                     scroll_size = len(res['hits']['hits'])
+
+            # Clear the scroll window
+            if scroll_id:
+                self.conn.clear_scroll(scroll_id = scroll_id)
 
             return events
 
