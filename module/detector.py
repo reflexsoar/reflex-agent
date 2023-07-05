@@ -941,7 +941,11 @@ class Detector(Process):
                         docs += response['hits']['hits']
 
                     # Clear the scroll
-                    elastic.conn.clear_scroll(scroll_id=scroll_id)
+                    if scroll_id:
+                        try:
+                            elastic.conn.clear_scroll(scroll_id=scroll_id)
+                        except:
+                            pass
 
             # If there are hits, process them as events
             if len(docs) > 0:
@@ -1546,7 +1550,11 @@ class Detector(Process):
             scroll_size = len(res['hits']['hits'])
 
         # Clear the scroll
-        elastic.conn.clear_scroll(scroll_id=scroll_id)
+        if scroll_id:
+            try:
+                elastic.conn.clear_scroll(scroll_id=scroll_id)
+            except:
+                pass
 
         if len(docs) > 0:
             self.logger.info(
@@ -1765,7 +1773,11 @@ class Detector(Process):
                             scroll_size = len(res['hits']['hits'])
 
                         # Clear the scroll
-                        elastic.conn.clear_scroll(scroll_id=scroll_id)
+                        if scroll_id:
+                            try:
+                                elastic.conn.clear_scroll(scroll_id=scroll_id)
+                            except:
+                                pass
 
                         self.logger.info(
                             f"{detection.name} ({detection.uuid}) - Total Hits {len(docs)}")
