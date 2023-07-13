@@ -39,6 +39,34 @@ class Detection(JSONSerializable):
     def __repr__(self) -> str:
         return f"Detection({self.__dict__})"
 
+    def supress_events(self, detection, events):
+        '''
+        Reduces the number of events by grouping the events by the signature and
+        only returning max_events per signature
+        '''
+        # Group the events by signature
+        grouped_events = {}
+
+        max_events = 0
+        if hasattr(detection, 'supression_max_events'):
+            max_events = detection.supression_max_events
+
+        if max_events <= 0:
+            return events
+
+        for event in events:
+            if event.signature not in grouped_events:
+                grouped_events[event.signature] = []
+            if len(grouped_events[event.signature]) < max_events:
+                grouped_events[event.signature].append(event)
+
+        # Coallesce the events for each signature back in to a single list
+        _events = []
+        for signature in grouped_events:
+            _events.extend(grouped_events[signature])
+
+        return _events
+
     def should_run(self, catchup_period=1440) -> bool:
         '''
         Returns True if the detection is due for execution and False if the detection
@@ -148,14 +176,17 @@ class Detector(Process):
             {'test': 'test'}
         ]
         if os.getenv('REFLEX_DETECTIONS_WRITEBACK_INDEX') != None:
-            self.logger.info(f"Writing {len(events)} events to {os.getenv('REFLEX_DETECTIONS_WRITEBACK_INDEX')}")
-            bulk(conn, events, index=os.getenv('REFLEX_DETECTIONS_WRITEBACK_INDEX'))
+            self.logger.info(
+                f"Writing {len(events)} events to {os.getenv('REFLEX_DETECTIONS_WRITEBACK_INDEX')}")
+            bulk(conn, events, index=os.getenv(
+                'REFLEX_DETECTIONS_WRITEBACK_INDEX'))
 
     @property
     def drop(self):
         # If the environment variable for drop_events is set, drop the events
         if os.getenv('REFLEX_DETECTIONS_DROP_EVENTS') != None:
-            self.logger.info(f"The REFLEX_DETECTIONS_DROP_EVENTS environment variable is set.  Dropping events.")
+            self.logger.info(
+                f"The REFLEX_DETECTIONS_DROP_EVENTS environment variable is set.  Dropping events.")
             return True
         return False
 
@@ -379,7 +410,8 @@ class Detector(Process):
             for exception in detection.exceptions:
 
                 if 'list' in exception and exception['list']['uuid'] != None:
-                    list_values = self.agent.get_list_values(uuid=exception['list']['uuid'])
+                    list_values = self.agent.get_list_values(
+                        uuid=exception['list']['uuid'])
                     exception['values'] = list_values
 
                 query["query"]["bool"]["must_not"].append(
@@ -625,6 +657,10 @@ class Detector(Process):
             # and the writeback is enabled
             self.writeback(elastic.conn, hits)
 
+            # If the detection has supression_max_events set to something other than 0
+            # supress the events
+            hits = self.supress_events(detection, hits)
+
             # If not dropping the event, process the hits
             if not self.drop:
                 self.agent.process_events(hits, True)
@@ -670,7 +706,8 @@ class Detector(Process):
         # If the detection has any data sources in intel lists add them to the list
         if len(detection.source_monitor_config['source_lists']) > 0:
             for source_list in detection.source_monitor_config['source_lists']:
-                data_sources.extend(self.agent.get_list_values(uuid=source_list['uuid']))
+                data_sources.extend(
+                    self.agent.get_list_values(uuid=source_list['uuid']))
 
         # If the detection has any data sources to exclude remove them from the list
         if len(detection.source_monitor_config['excluded_sources']) > 0:
@@ -684,7 +721,7 @@ class Detector(Process):
                 for source in self.agent.get_list_values(uuid=excluded_source_list['uuid']):
                     if source in data_sources:
                         data_sources.remove(source)
-        
+
         # Dedupe the list of data sources
         data_sources = list(set(data_sources))
 
@@ -718,17 +755,19 @@ class Detector(Process):
                         query_time += res['took']
 
                 except NotFoundError:
-                    self.logger.warning(f"Failed to run count query against {data_source} - Data Source Not Found")
+                    self.logger.warning(
+                        f"Failed to run count query against {data_source} - Data Source Not Found")
                     docs.append({
                                 '_source': {
                                     'message': f"Failed to run count query against {data_source} - Data Source Not Found",
                                     '_id': str(uuid.uuid4()),
                                     '@timestamp': datetime.datetime.utcnow().isoformat(),
                                     'data_source': data_source
-                            }})
+                                }})
                     continue
                 except Exception as e:
-                    self.logger.warning(f"Failed to run count query against {data_source} - {e}")
+                    self.logger.warning(
+                        f"Failed to run count query against {data_source} - {e}")
                     continue
 
             count = 0
@@ -753,21 +792,23 @@ class Detector(Process):
                     query_time += res['took']
 
             except NotFoundError:
-                self.logger.warning(f"Failed to run count query against {data_source} - Data Source Not Found")
+                self.logger.warning(
+                    f"Failed to run count query against {data_source} - Data Source Not Found")
                 docs.append({
-                                '_source': {
-                                    'message': f"Failed to run count query against {data_source} - Data Source Not Found",
-                                    '_id': str(uuid.uuid4()),
-                                    '@timestamp': datetime.datetime.utcnow().isoformat(),
-                                    'data_source': data_source
-                            }})
+                    '_source': {
+                        'message': f"Failed to run count query against {data_source} - Data Source Not Found",
+                        '_id': str(uuid.uuid4()),
+                        '@timestamp': datetime.datetime.utcnow().isoformat(),
+                        'data_source': data_source
+                    }})
                 continue
             except Exception as e:
-                self.logger.warning(f"Failed to run count query against {data_source} - {e}")
+                self.logger.warning(
+                    f"Failed to run count query against {data_source} - {e}")
                 continue
 
             threshold = detection.source_monitor_config['threshold']
-            
+
             if is_delta:
                 as_percentage = detection.source_monitor_config['threshold_as_percent']
                 if as_percentage:
@@ -784,7 +825,7 @@ class Detector(Process):
                         '_id': str(uuid.uuid4()),
                         '@timestamp': datetime.datetime.utcnow().isoformat(),
                         'data_source': data_source
-                }})
+                    }})
 
         docs = elastic.parse_events(docs, title=detection.name, signature_values=[
                                     detection.detection_id], risk_score=detection.risk_score)
@@ -798,9 +839,9 @@ class Detector(Process):
             doc.input_uuid = _input['uuid']
 
         update_payload = {
-                'last_run': detection.last_run,
-                'hits': len(docs)
-            }
+            'last_run': detection.last_run,
+            'hits': len(docs)
+        }
 
         # Calculate how long the entire detection took to run, this helps identify
         # bottlenecks outside the ES query times
@@ -820,6 +861,10 @@ class Detector(Process):
             # Write the docs to Elasticsearch if there are any
             # and the writeback is enabled
             self.writeback(elastic.conn, docs)
+
+            # If the detection has supression_max_events set to something other than 0
+            # supress the events
+            docs = self.supress_events(detection, docs)
 
             # If not dropping the event, process the hits
             if not self.drop:
@@ -863,7 +908,8 @@ class Detector(Process):
             for exception in detection.exceptions:
 
                 if 'list' in exception and exception['list']['uuid'] != None:
-                    list_values = self.agent.get_list_values(uuid=exception['list']['uuid'])
+                    list_values = self.agent.get_list_values(
+                        uuid=exception['list']['uuid'])
                     exception['values'] = list_values
 
                 query["query"]["bool"]["must_not"].append(
@@ -923,7 +969,7 @@ class Detector(Process):
                     # Run the query again to get the events
                     response = elastic.conn.search(
                         index=_input['config']['index'], body=query, scroll='30s')
-                    
+
                     scroll_id = response['_scroll_id']
                     scroll_size = response['hits']['total']['value']
                     query_time += response['took']
@@ -985,11 +1031,16 @@ class Detector(Process):
                 # and the writeback is enabled
                 self.writeback(elastic.conn, docs)
 
+                # If the detection has supression_max_events set to something other than 0
+                # supress the events
+                docs = self.supress_events(detection, docs)
+
                 # If not dropping the event, process the hits
                 if not self.drop:
                     self.agent.process_events(docs, True)
 
-                update_payload['last_hit'] = datetime.datetime.utcnow().isoformat()
+                update_payload['last_hit'] = datetime.datetime.utcnow(
+                ).isoformat()
 
             self.agent.update_detection(detection.uuid, payload=update_payload)
 
@@ -1261,6 +1312,10 @@ class Detector(Process):
             # and the writeback is enabled
             self.writeback(elastic.conn, docs)
 
+            # If the detection has supression_max_events set to something other than 0
+            # supress the events
+            docs = self.supress_events(detection, docs)
+
             # If not dropping the event, process the hits
             if not self.drop:
                 self.agent.process_events(docs, True)
@@ -1311,7 +1366,8 @@ class Detector(Process):
             for exception in detection.exceptions:
 
                 if 'list' in exception and exception['list']['uuid'] != None:
-                    list_values = self.agent.get_list_values(uuid=exception['list']['uuid'])
+                    list_values = self.agent.get_list_values(
+                        uuid=exception['list']['uuid'])
                     exception['values'] = list_values
 
                 query["query"]["bool"]["must_not"].append(
@@ -1392,7 +1448,7 @@ class Detector(Process):
 
             res = elastic.conn.search(
                 index=_input['config']['index'], body=query_copy)
-            
+
             # If there are aggregations, we need to add the keys to the learned_keys list
             if 'aggregations' in res:
                 for bucket in res['aggregations'][key_field]['buckets']:
@@ -1416,11 +1472,11 @@ class Detector(Process):
             if hit:
                 if operator in ['==', "<", "<=", "!="] and hit_count == 0:
                     docs += [{
-                                '_source': {
-                                    'message': f"No results found.",
-                                    '_id': str(uuid.uuid4()),
-                                    '@timestamp': datetime.datetime.utcnow().isoformat()
-                            }}]
+                        '_source': {
+                            'message': f"No results found.",
+                            '_id': str(uuid.uuid4()),
+                            '@timestamp': datetime.datetime.utcnow().isoformat()
+                        }}]
                 else:
                     docs += res['hits']['hits']
 
@@ -1439,7 +1495,7 @@ class Detector(Process):
                                     '_id': str(uuid.uuid4()),
                                     '@timestamp': datetime.datetime.utcnow().isoformat(),
                                     key_field: key
-                            }}]
+                                }}]
 
                 else:
                     for bucket in buckets:
@@ -1459,15 +1515,13 @@ class Detector(Process):
                                 'message': f"No results found",
                                 '_id': str(uuid.uuid4()),
                                 '@timestamp': datetime.datetime.utcnow().isoformat()
-                        }}]
+                            }}]
                     else:
                         for bucket in buckets:
                             docs += bucket['doc']['hits']['hits']
 
         docs = elastic.parse_events(docs, title=detection.name, signature_values=[
                                     detection.detection_id], risk_score=detection.risk_score)
-        
-        
 
         for doc in docs:
             doc.description = getattr(
@@ -1501,6 +1555,10 @@ class Detector(Process):
             # Write the docs to Elasticsearch if there are any
             # and the writeback is enabled
             self.writeback(elastic.conn, docs)
+
+            # If the detection has supression_max_events set to something other than 0
+            # supress the events
+            docs = self.supress_events(detection, docs)
 
             # If not dropping the event, process the hits
             if not self.drop:
@@ -1560,7 +1618,7 @@ class Detector(Process):
             self.logger.info(
                 f"{detection.name} ({detection.uuid}) - Total Hits {len(docs)}")
         return docs, query_time
-    
+
     def variable_replacement(self, query):
         """
         Replaces variables in the query with their values for example
@@ -1592,7 +1650,7 @@ class Detector(Process):
                 if len(var_values) > 1:
                     variable_values = f"({variable_values})"
                 query = query.replace(var_string, variable_values)
-        
+
         return query
 
     def execute(self, rule):
@@ -1663,9 +1721,10 @@ class Detector(Process):
                     self.logger.error(
                         f"Detection {detection.name} attempted to use credential {_input['credential']} but no credential found")
                     return
-                
+
                 # Massage the query to replace variables with their values
-                detection.query['query'] = self.variable_replacement(detection.query['query'])
+                detection.query['query'] = self.variable_replacement(
+                    detection.query['query'])
 
                 self.logger.info(
                     f"Running detection {detection.name} using {_input['name']} ({_input['uuid']}) and credential {_input['credential']} - Lookbehind {detection.lookbehind} minutes.")
@@ -1749,7 +1808,8 @@ class Detector(Process):
 
                             # Parse the events and extract observables, tags, signature the event
                             docs += elastic.parse_events(
-                                res['hits']['hits'], title=detection.name, signature_values=[detection.detection_id], risk_score=detection.risk_score,
+                                res['hits']['hits'], title=detection.name, signature_values=[
+                                    detection.detection_id], risk_score=detection.risk_score,
                                 time_to_detect=True)
                         else:
                             scroll_size = 0
@@ -1767,7 +1827,8 @@ class Detector(Process):
                                     f"{detection.name} ({detection.uuid}) - Found {len(res['hits']['hits'])} detection hits.")
                                 # Parse the events and extract observables, tags, signature the event
                                 docs += elastic.parse_events(
-                                    res['hits']['hits'], title=detection.name, signature_values=[detection.detection_id], risk_score=detection.risk_score,
+                                    res['hits']['hits'], title=detection.name, signature_values=[
+                                        detection.detection_id], risk_score=detection.risk_score,
                                     time_to_detect=True)
 
                             scroll_size = len(res['hits']['hits'])
@@ -1822,10 +1883,14 @@ class Detector(Process):
                         # Update the detection with the meta information from this run
                         self.agent.update_detection(
                             detection.uuid, payload=update_payload)
-                        
+
                         # Write the docs to Elasticsearch if there are any
                         # and the writeback is enabled
                         self.writeback(elastic.conn, docs)
+
+                        # If the detection has supression_max_events set to something other than 0
+                        # supress the events
+                        docs = self.supress_events(detection, docs)
 
                         # Close the connection to Elasticsearch
                         elastic.conn.transport.close()
