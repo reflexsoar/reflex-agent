@@ -39,7 +39,7 @@ class Detection(JSONSerializable):
     def __repr__(self) -> str:
         return f"Detection({self.__dict__})"
 
-    def supress_events(self, detection, events):
+    def suppress_events(self, detection, events):
         '''
         Reduces the number of events by grouping the events by the signature and
         only returning max_events per signature
@@ -48,8 +48,8 @@ class Detection(JSONSerializable):
         grouped_events = {}
 
         max_events = 0
-        if hasattr(detection, 'supression_max_events'):
-            max_events = detection.supression_max_events
+        if hasattr(detection, 'suppression_max_events'):
+            max_events = detection.suppression_max_events
 
         if max_events <= 0:
             return events
@@ -657,9 +657,9 @@ class Detector(Process):
             # and the writeback is enabled
             self.writeback(elastic.conn, hits)
 
-            # If the detection has supression_max_events set to something other than 0
-            # supress the events
-            hits = self.supress_events(detection, hits)
+            # If the detection has suppression_max_events set to something other than 0
+            # suppress the events
+            hits = self.suppress_events(detection, hits)
 
             # If not dropping the event, process the hits
             if not self.drop:
@@ -862,9 +862,9 @@ class Detector(Process):
             # and the writeback is enabled
             self.writeback(elastic.conn, docs)
 
-            # If the detection has supression_max_events set to something other than 0
-            # supress the events
-            docs = self.supress_events(detection, docs)
+            # If the detection has suppression_max_events set to something other than 0
+            # suppress the events
+            docs = self.suppress_events(detection, docs)
 
             # If not dropping the event, process the hits
             if not self.drop:
@@ -1031,9 +1031,9 @@ class Detector(Process):
                 # and the writeback is enabled
                 self.writeback(elastic.conn, docs)
 
-                # If the detection has supression_max_events set to something other than 0
-                # supress the events
-                docs = self.supress_events(detection, docs)
+                # If the detection has suppression_max_events set to something other than 0
+                # suppress the events
+                docs = self.suppress_events(detection, docs)
 
                 # If not dropping the event, process the hits
                 if not self.drop:
@@ -1312,9 +1312,9 @@ class Detector(Process):
             # and the writeback is enabled
             self.writeback(elastic.conn, docs)
 
-            # If the detection has supression_max_events set to something other than 0
-            # supress the events
-            docs = self.supress_events(detection, docs)
+            # If the detection has suppression_max_events set to something other than 0
+            # suppress the events
+            docs = self.suppress_events(detection, docs)
 
             # If not dropping the event, process the hits
             if not self.drop:
@@ -1556,9 +1556,9 @@ class Detector(Process):
             # and the writeback is enabled
             self.writeback(elastic.conn, docs)
 
-            # If the detection has supression_max_events set to something other than 0
-            # supress the events
-            docs = self.supress_events(detection, docs)
+            # If the detection has suppression_max_events set to something other than 0
+            # suppress the events
+            docs = self.suppress_events(detection, docs)
 
             # If not dropping the event, process the hits
             if not self.drop:
@@ -1888,9 +1888,9 @@ class Detector(Process):
                         # and the writeback is enabled
                         self.writeback(elastic.conn, docs)
 
-                        # If the detection has supression_max_events set to something other than 0
-                        # supress the events
-                        docs = self.supress_events(detection, docs)
+                        # If the detection has suppression_max_events set to something other than 0
+                        # suppress the events
+                        docs = self.suppress_events(detection, docs)
 
                         # Close the connection to Elasticsearch
                         elastic.conn.transport.close()
