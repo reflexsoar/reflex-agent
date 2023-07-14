@@ -11,6 +11,7 @@ import datetime
 from dateutil import parser as date_parser
 from multiprocessing import Process, Event
 from multiprocessing.pool import ThreadPool
+from concurrent.futures import ThreadPoolExecutor
 
 from opensearchpy import ConnectionTimeout, NotFoundError
 from opensearchpy.helpers import bulk
@@ -508,8 +509,16 @@ class Detector(Process):
         Runs the assessment logic for each rule that is in need of assessment
         '''
         self.logger.info('Assessing rules')
-        for rule in self.load_rules_for_assessment():
-            self._assess_rule(rule)
+
+        # Allow for multiple rules to be assessed at once using concurrent futures
+        # TODO: Make the max_parallel_assessments configurable
+        max_parallel_assessments = 5
+        rules = self.load_rules_for_assessment()
+        with ThreadPoolExecutor(max_workers=max_parallel_assessments) as executor:
+            executor.map(self._assess_rule, rules)
+
+        #for rule in self.load_rules_for_assessment():
+        #    self._assess_rule(rule)
 
     def load_detections(self, active=True):
         '''
@@ -1965,9 +1974,18 @@ class Detector(Process):
 
             self.logger.info('Fetching detections')
             self.load_detections()
-            self.run_rules()
+
+            def run_func(f):
+                f()
+
+            # Run rules in its own thread
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                executor.map(run_func, [self.run_rules, self.assess_rules])
+
+            #self.run_rules()
+            #self.assess_rules()
+
             self.update_input_mappings()
-            self.assess_rules()
             self.logger.info('Run complete, waiting')
 
             if self.should_exit.is_set():
