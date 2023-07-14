@@ -39,33 +39,6 @@ class Detection(JSONSerializable):
     def __repr__(self) -> str:
         return f"Detection({self.__dict__})"
 
-    def suppress_events(self, detection, events):
-        '''
-        Reduces the number of events by grouping the events by the signature and
-        only returning max_events per signature
-        '''
-        # Group the events by signature
-        grouped_events = {}
-
-        max_events = 0
-        if hasattr(detection, 'suppression_max_events'):
-            max_events = detection.suppression_max_events
-
-        if max_events <= 0:
-            return events
-
-        for event in events:
-            if event.signature not in grouped_events:
-                grouped_events[event.signature] = []
-            if len(grouped_events[event.signature]) < max_events:
-                grouped_events[event.signature].append(event)
-
-        # Coallesce the events for each signature back in to a single list
-        _events = []
-        for signature in grouped_events:
-            _events.extend(grouped_events[signature])
-
-        return _events
 
     def should_run(self, catchup_period=1440) -> bool:
         '''
@@ -168,6 +141,34 @@ class Detector(Process):
         self.detection_rules = []
         self.should_exit = Event()
         self.new_term_state_table = {}
+
+    def suppress_events(self, detection, events):
+        '''
+        Reduces the number of events by grouping the events by the signature and
+        only returning max_events per signature
+        '''
+        # Group the events by signature
+        grouped_events = {}
+
+        max_events = 0
+        if hasattr(detection, 'suppression_max_events'):
+            max_events = detection.suppression_max_events
+
+        if max_events <= 0:
+            return events
+
+        for event in events:
+            if event.signature not in grouped_events:
+                grouped_events[event.signature] = []
+            if len(grouped_events[event.signature]) < max_events:
+                grouped_events[event.signature].append(event)
+
+        # Coallesce the events for each signature back in to a single list
+        _events = []
+        for signature in grouped_events:
+            _events.extend(grouped_events[signature])
+
+        return _events
 
     def writeback(self, conn, events):
         # If the environment variable for writeback_index is set, write the results to the index
