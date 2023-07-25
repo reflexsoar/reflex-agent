@@ -3,6 +3,7 @@ import datetime
 from elasticsearch import Elasticsearch
 from multiprocessing import Process
 from retry import retry
+from dateutil import parser
 import json
 import ssl
 import chevron
@@ -228,7 +229,10 @@ class Elastic(Process):
             if time_to_detect:
                 now = datetime.datetime.utcnow()
                 if hasattr(event, 'original_date'):
-                    original_date = datetime.datetime.strptime(event.original_date, '%Y-%m-%dT%H:%M:%S.%f')
+                    try:
+                        original_date = parser.parse(event.original_date)
+                    except ValueError:
+                        original_date = datetime.datetime.utcnow()
                     event.time_to_detect = (now - original_date).total_seconds()
 
             events.append(event)
