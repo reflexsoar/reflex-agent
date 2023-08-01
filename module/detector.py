@@ -1189,9 +1189,10 @@ class Detector(Process):
                     }
                     if detection.warnings:
                         update_payload['warnings'] = detection.warnings
-                        update_payload['warnings'] += 'max_terms_exceeded'
+                        if isinstance(update_payload['warnings'], list) and 'max_terms_exceeded' not in update_payload['warnings']:
+                            update_payload['warnings'].append('max_terms_exceeded')
                     else:
-                        update_payload['warnings'] = 'max_terms_exceeded'
+                        update_payload['warnings'] = ['max_terms_exceeded']
 
                     self.agent.update_detection(
                         detection.uuid, payload=update_payload)
