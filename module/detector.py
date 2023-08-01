@@ -589,7 +589,7 @@ class Detector(Process):
 
         # Create a connection to Elasticsearch
         elastic = Elastic(
-            _input['config'], _input['field_mapping'], credential)
+            _input['config'], field_mapping, credential, signature_fields=signature_fields)
 
         query = {
             "query": {
@@ -896,7 +896,7 @@ class Detector(Process):
 
         # Create a connection to Elasticsearch
         elastic = Elastic(
-            _input['config'], _input['field_mapping'], credential)
+            _input['config'], field_mapping, credential, signature_fields=signature_fields)
 
         query = {
             "query": {
@@ -1113,7 +1113,7 @@ class Detector(Process):
 
         # Create a connection to Elasticsearch
         elastic = Elastic(
-            _input['config'], _input['field_mapping'], credential)
+            _input['config'], field_mapping, credential, signature_fields=signature_fields)
 
         query_time = 0
         docs = []
@@ -1343,7 +1343,7 @@ class Detector(Process):
 
         # Create a connection to Elasticsearch
         elastic = Elastic(
-            _input['config'], _input['field_mapping'], credential, signature_fields=signature_fields)
+            _input['config'], field_mapping, credential, signature_fields=signature_fields)
 
         # If the detection has a max_events configured and it is not greater than what the
         # agent is configured to allow, use the configured value
