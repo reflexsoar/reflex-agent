@@ -1774,6 +1774,12 @@ class Detector(Process):
 
                     if detection.rule_type == 0:
 
+                        if 'config' in _input:
+                            if 'alert_date_field' in _input['config']:
+                                alert_date_field = _input['config']['alert_date_field']
+                            else:
+                                alert_date_field = '@timestamp'
+
                         # TODO: Support for multiple queries
                         query = {
                             "query": {
@@ -1782,7 +1788,7 @@ class Detector(Process):
                                         {"query_string": {
                                             "query": detection.query['query']}},
                                         {"range": {
-                                            "@timestamp": {"gte": "now-{}m".format(detection.lookbehind)}}}
+                                            alert_date_field: {"gte": "now-{}m".format(detection.lookbehind)}}}
                                     ]
                                 }
                             },
