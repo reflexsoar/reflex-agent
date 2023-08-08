@@ -1775,8 +1775,12 @@ class Detector(Process):
 
                         res = elastic.conn.search(
                             index=_input['config']['index'], body=query, scroll='30s')
-
-                        scroll_id = res['_scroll_id']
+                        
+                        scroll_id = None
+                        
+                        if '_scroll_id' in res:
+                            scroll_id = res['_scroll_id']
+                            
                         if 'total' in res['hits']:
                             self.logger.info(
                                 f"{detection.name} ({detection.uuid}) - Found {len(res['hits']['hits'])} detection hits.")
