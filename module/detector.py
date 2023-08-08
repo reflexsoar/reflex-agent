@@ -212,6 +212,38 @@ class Detector(Process):
         if detection_id in self.new_term_state_table and field in self.new_term_state_table[detection_id]:
             return self.new_term_state_table[detection_id][field]
         return []
+    
+    def build_exceptions(self, query, detection):
+        """
+        Builds the exceptions for a detection rule
+        """
+        if hasattr(detection, 'exceptions') and detection.exceptions != None:
+            query["query"]["bool"]["must_not"] = []
+            for exception in detection.exceptions:
+
+                if 'condition' in exception and exception['condition'] == 'wildcard':
+                    for value in exception['values']:
+                        query["query"]["bool"]["must_not"].append(
+                            {
+                                "wildcard": {
+                                    f"{exception['field']}": value
+                                }
+                            }
+                        )
+                else:
+                    if 'list' in exception and exception['list']['uuid'] != None:
+                        list_values = self.agent.get_list_values(
+                            uuid=exception['list']['uuid'])
+                        exception['values'] = list_values
+
+                    query["query"]["bool"]["must_not"].append(
+                        {
+                            "terms": {
+                                f"{exception['field']}": exception['values']
+                            }
+                        }
+                    )
+        return query
 
     def exit(self):
         '''
@@ -406,23 +438,8 @@ class Detector(Process):
             "size": 0
         }
 
-        # If there are exclusions/exceptions add them to the query
-        if hasattr(detection, 'exceptions') and detection.exceptions != None:
-            query["query"]["bool"]["must_not"] = []
-            for exception in detection.exceptions:
-
-                if 'list' in exception and exception['list']['uuid'] != None:
-                    list_values = self.agent.get_list_values(
-                        uuid=exception['list']['uuid'])
-                    exception['values'] = list_values
-
-                query["query"]["bool"]["must_not"].append(
-                    {
-                        "terms": {
-                            f"{exception['field']}": exception['values']
-                        }
-                    }
-                )
+        # Build the query
+        query = self.build_exceptions(query, detection)
 
         # Run the query
         try:
@@ -438,12 +455,15 @@ class Detector(Process):
 
                 # Sum all the buckets to get total_hits
                 total_hits = 0
+                days_with_hits = 0
                 for bucket in response['aggregations']['overtime']['buckets']:
+                    if bucket['doc_count'] > 0:
+                        days_with_hits += 1
                     total_hits += bucket['doc_count']
 
                 update_payload = {
                     'hits_over_time': json.dumps(events_over_time),
-                    'average_hits_per_day': math.ceil(total_hits / DAYS),
+                    'average_hits_per_day': math.ceil(total_hits / days_with_hits),
                     'assess_rule': False,
                     'last_assessed': datetime.datetime.utcnow().isoformat()
                 }
@@ -913,22 +933,7 @@ class Detector(Process):
         }
 
         # If there are exclusions/exceptions add them to the query
-        if hasattr(detection, 'exceptions') and detection.exceptions != None:
-            query["query"]["bool"]["must_not"] = []
-            for exception in detection.exceptions:
-
-                if 'list' in exception and exception['list']['uuid'] != None:
-                    list_values = self.agent.get_list_values(
-                        uuid=exception['list']['uuid'])
-                    exception['values'] = list_values
-
-                query["query"]["bool"]["must_not"].append(
-                    {
-                        "terms": {
-                            f"{exception['field']}": exception['values']
-                        }
-                    }
-                )
+        query = self.build_exceptions(query, detection)
 
         # Get the indicator config
         indicator_config = detection.indicator_match_config
@@ -1136,22 +1141,7 @@ class Detector(Process):
             }
 
             # If there are exclusions/exceptions add them to the query
-            if hasattr(detection, 'exceptions') and detection.exceptions != None:
-                query["query"]["bool"]["must_not"] = []
-                for exception in detection.exceptions:
-
-                    if 'list' in exception and exception['list']['uuid'] != None:
-                        list_values = self.agent.get_list_values(
-                            uuid=exception['list']['uuid'])
-                        exception['values'] = list_values
-
-                    query["query"]["bool"]["must_not"].append(
-                        {
-                            "terms": {
-                                f"{exception['field']}": exception['values']
-                            }
-                        }
-                    )
+            query = self.build_exceptions(query, detection)
 
             # Set the time window
             # Set the time range for the old terms query
@@ -1372,22 +1362,7 @@ class Detector(Process):
         query["size"] = detection.threshold_config['max_events']
 
         # If there are exclusions/exceptions add them to the query
-        if hasattr(detection, 'exceptions') and detection.exceptions != None:
-            query["query"]["bool"]["must_not"] = []
-            for exception in detection.exceptions:
-
-                if 'list' in exception and exception['list']['uuid'] != None:
-                    list_values = self.agent.get_list_values(
-                        uuid=exception['list']['uuid'])
-                    exception['values'] = list_values
-
-                query["query"]["bool"]["must_not"].append(
-                    {
-                        "terms": {
-                            f"{exception['field']}": exception['values']
-                        }
-                    }
-                )
+        query = self.build_exceptions(query, detection)
 
         # Change the query if the threshold is based off a key field
         has_key_field = False
@@ -1774,6 +1749,12 @@ class Detector(Process):
 
                     if detection.rule_type == 0:
 
+                        if 'config' in _input:
+                            if 'alert_date_field' in _input['config']:
+                                alert_date_field = _input['config']['alert_date_field']
+                            else:
+                                alert_date_field = '@timestamp'
+
                         # TODO: Support for multiple queries
                         query = {
                             "query": {
@@ -1782,7 +1763,7 @@ class Detector(Process):
                                         {"query_string": {
                                             "query": detection.query['query']}},
                                         {"range": {
-                                            "@timestamp": {"gte": "now-{}m".format(detection.lookbehind)}}}
+                                            alert_date_field: {"gte": "now-{}m".format(detection.lookbehind)}}}
                                     ]
                                 }
                             },
@@ -1790,22 +1771,7 @@ class Detector(Process):
                         }
 
                         # If there are exclusions/exceptions add them to the query
-                        if hasattr(detection, 'exceptions') and detection.exceptions != None:
-                            query["query"]["bool"]["must_not"] = []
-                            for exception in detection.exceptions:
-
-                                if 'list' in exception and exception['list']['uuid'] != None:
-                                    list_values = self.agent.get_list_values(
-                                        uuid=exception['list']['uuid'])
-                                    exception['values'] = list_values
-
-                                query["query"]["bool"]["must_not"].append(
-                                    {
-                                        "terms": {
-                                            f"{exception['field']}": exception['values']
-                                        }
-                                    }
-                                )
+                        query = self.build_exceptions(query, detection)
 
                         res = elastic.conn.search(
                             index=_input['config']['index'], body=query, scroll='30s')
