@@ -8,6 +8,7 @@ import math
 import time
 import logging
 import datetime
+from pytz import timezone
 from dateutil import parser as date_parser
 from multiprocessing import Process, Event
 from multiprocessing.pool import ThreadPool
@@ -19,7 +20,7 @@ from utils.base import JSONSerializable
 from utils.elasticsearch import Elastic
 from utils.helpers import create_piped_aggregation
 from utils.indexed_dict import IndexedDict
-from .rule import BaseRule
+#from .rule import BaseRule
 
 
 class Detection(JSONSerializable):
@@ -50,6 +51,42 @@ class Detection(JSONSerializable):
             catchup_period (int) - The maximum time in minutes that the detection should adjust
                                     the lookbehind to find missed detections
         '''
+
+        schedule_allows = False
+        # Check to see if the current day of the week and time is in the schedule
+        if hasattr(self, 'schedule') and isinstance(self.schedule, dict):
+
+            # Adjust for the timezone if it is set
+            if hasattr(self, 'schedule_timezone'):
+                now = datetime.datetime.now(timezone(self.schedule_timezone))
+            else:
+                now = datetime.datetime.utcnow()
+                
+            for day_of_week in self.schedule:
+                day_config = self.schedule[day_of_week]
+                if 'active' in day_config and day_config['active']:
+                    if day_of_week == now.strftime("%A").lower():
+
+                        # For each define from to in hours check if the 
+                        # current hours and minutes is within the range
+                        for time_range in day_config['hours']:
+                            
+                            # Get the current hours and minutes in 24 hour format
+                            now_time = f"{now.hour:02d}{now.minute:02d}"
+                            now_time = int(now_time)
+
+                            # Get the from and to hours and minutes in 24 hour format
+                            from_time = int(time_range["from"].replace(":", ""))
+                            to_time = int(time_range["to"].replace(":", ""))
+
+                            # If the current time is within the range, allow the run
+                            if now_time >= from_time and now_time <= to_time:
+                                schedule_allows = True
+                                break
+
+        # If the schedule doesn't allow us to run, return False
+        if not schedule_allows:
+            return False
 
         if hasattr(self, 'last_run'):
 
