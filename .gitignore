@@ -7,3 +7,5 @@ __pycache__/
 plugins/*.py
 
 .vscode/
+
+test_base_rule.py
