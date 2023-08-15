@@ -111,8 +111,8 @@ class BaseRule:
         # If the environment variable for writeback_index is set, write the results to the index
         # using the bulk helper and reusing the elastic.conn connection object
         if os.getenv('REFLEX_DETECTIONS_WRITEBACK_INDEX') != None:
-            self.logger.info(
-                f"Writing {len(events)} events to {os.getenv('REFLEX_DETECTIONS_WRITEBACK_INDEX')}")
+            #self.logger.info(
+            #    f"Writing {len(events)} events to {os.getenv('REFLEX_DETECTIONS_WRITEBACK_INDEX')}")
             bulk(self.conn, events, index=os.getenv(
                 'REFLEX_DETECTIONS_WRITEBACK_INDEX'))
 
@@ -120,8 +120,8 @@ class BaseRule:
     def drop(self):
         # If the environment variable for drop_events is set, drop the events
         if os.getenv('REFLEX_DETECTIONS_DROP_EVENTS') != None:
-            self.logger.info(
-                f"The REFLEX_DETECTIONS_DROP_EVENTS environment variable is set.  Dropping events.")
+            #self.logger.info(
+            #    f"The REFLEX_DETECTIONS_DROP_EVENTS environment variable is set.  Dropping events.")
             return True
         return False
 

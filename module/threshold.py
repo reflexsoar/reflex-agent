@@ -46,13 +46,13 @@ class ThresholdRule(BaseRule):
                             # and create a dictionary of the key_fields and bucket keys
                             key_values = dict(zip(key_fields, bucket['key']))
                             doc_searches.append(key_values)
-                            logger.warning(f"[!] Rule \"{rule_name}\" has matched - {value} {operator} {threshold} - {bucket['key']}")
+                            #logger.warning(f"[!] Rule \"{rule_name}\" has matched - {value} {operator} {threshold} - {bucket['key']}")
                 else:
                     value = data['aggregations']["1"]["value"]
                     if self.test_threshold(value, operator, threshold):
                         hits = True
                         doc_searches.append({})
-                        logger.warning(f"[!] Rule \"{rule_name}\" has matched - {value} {operator} {threshold}")
+                        #logger.warning(f"[!] Rule \"{rule_name}\" has matched - {value} {operator} {threshold}")
             elif mode == 'terms':
                 if 'aggregations' in data:
                     for bucket in data['aggregations']["1"]["buckets"]:
@@ -61,7 +61,7 @@ class ThresholdRule(BaseRule):
                             if self.test_threshold(value, operator, threshold):
                                 hits = True
                                 doc_searches.append(dict(zip([threshold_field], [bucket['key']])))
-                                logger.warning(f"[!] Rule \"{rule_name}\" has matched - {value} {operator} {threshold} - {bucket['key']}")
+                                #logger.warning(f"[!] Rule \"{rule_name}\" has matched - {value} {operator} {threshold} - {bucket['key']}")
                         else:
                             for _bucket in bucket[threshold_field]['buckets']:
                                 value = _bucket['doc_count']
@@ -69,20 +69,21 @@ class ThresholdRule(BaseRule):
                                     hits = True
                                     key_values = dict(zip([threshold_field], [_bucket['key']]))
                                     doc_searches.append(key_values)
-                                    logger.warning(f"[!] Rule \"{rule_name}\" has matched - {value} {operator} {threshold} - {bucket['key']} to {_bucket['key']}")
+                                    #logger.warning(f"[!] Rule \"{rule_name}\" has matched - {value} {operator} {threshold} - {bucket['key']} to {_bucket['key']}")
             elif mode == 'count':
                 value = data['hits']['total']['value']
                 if self.test_threshold(value, operator, threshold):
                     hits = True
-                    logger.warning(f"[!] Rule \"{rule_name}\" has matched - {value} {operator} {threshold}")
+                    #logger.warning(f"[!] Rule \"{rule_name}\" has matched - {value} {operator} {threshold}")
                 #print(json.dumps(data['aggregations'], indent=2))
 
-            if not hits:
-                logger.success(f"[i] Rule \"{rule_name}\" did not match")
+            #if not hits:
+            #    logger.success(f"[i] Rule \"{rule_name}\" did not match")
         except KeyError as e:
-            logger.error(f"[!] Rule \"{rule_name}\" failed to match")
-            logger.error(e)
-            logger.error(data)
+            print(e)
+            #logger.error(f"[!] Rule \"{rule_name}\" failed to match")
+            #logger.error(e)
+            #logger.error(data)
 
         with ThreadPoolExecutor(max_workers=5) as executor:
             futures = [executor.submit(self.fetch_documents, fields_values=doc_search, threshold_field=threshold_field) for doc_search in doc_searches]
