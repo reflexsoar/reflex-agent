@@ -18,8 +18,8 @@ from opensearchpy import ConnectionTimeout, NotFoundError
 from opensearchpy.helpers import bulk
 from utils.base import JSONSerializable
 from utils.elasticsearch import Elastic
-from utils.helpers import create_piped_aggregation
 from utils.indexed_dict import IndexedDict
+from .threshold import ThresholdRule
 #from .rule import BaseRule
 
 
@@ -1770,7 +1770,8 @@ class Detector(Process):
 
                     rule_types = {
                         0: self.match_rule,
-                        1: self.threshold_rule,
+                        #1: self.threshold_rule,
+                        1: ThresholdRule(detection, _input, credential, self.agent, signature_fields, field_mapping),
                         2: self.metric_rule,
                         3: self.mismatch_rule,
                         4: self.new_terms_rule,
@@ -1780,10 +1781,13 @@ class Detector(Process):
 
                     detection.last_run = datetime.datetime.utcnow().isoformat()
 
-                    if detection.rule_type != 0:
+                    if detection.rule_type not in [0,1]:
                         rule_types[detection.rule_type](
                             detection, credential, _input, signature_fields, field_mapping)
-
+                    
+                    if detection.rule_type == 1:
+                        rule_types[detection.rule_type].run()
+                        
                     if detection.rule_type == 0:
 
                         if 'config' in _input:

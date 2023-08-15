@@ -12,8 +12,12 @@ class ThresholdRule(BaseRule):
                  field_mapping={}):
         super().__init__(detection, detection_input, credential, agent, signature_fields, field_mapping)
         self._config = self.detection.threshold_config
-        self.create_multi_term_aggregation()
-        self.query["size"] = 0
+
+        if self._config['mode'] != 'count':
+            self.create_multi_term_aggregation()
+            self.query["size"] = 0
+        else:
+            self.query["size"] = self._config["max_events"]
 
     def execute(self):
 
@@ -27,8 +31,8 @@ class ThresholdRule(BaseRule):
 
         operator = self._config['operator']
         threshold = self._config['threshold']
-        key_fields = self._config['key_field']
-        threshold_field = self._config['threshold_field']
+        key_fields = self._config.get('key_field', []) or []
+        threshold_field = self._config.get('threshold_field', None) or None
         rule_name = self.detection.name
         mode = self._config['mode']
 
@@ -74,6 +78,7 @@ class ThresholdRule(BaseRule):
                 value = data['hits']['total']['value']
                 if self.test_threshold(value, operator, threshold):
                     hits = True
+                    docs.extend(data['hits']['hits'])
                     #logger.warning(f"[!] Rule \"{rule_name}\" has matched - {value} {operator} {threshold}")
                 #print(json.dumps(data['aggregations'], indent=2))
 
@@ -204,11 +209,11 @@ class ThresholdRule(BaseRule):
         of the multi_term aggregation.
         '''
 
-        fields = self._config['key_field']
+        fields = self._config.get('key_field', []) or []
         threshold = self._config['threshold']
         max_size = 100
         mode = self._config['mode']
-        threshold_field = self._config['threshold_field']
+        threshold_field = self._config.get('threshold_field', None) or None
 
         if threshold_field is None:
             threshold_field = fields[-1]
