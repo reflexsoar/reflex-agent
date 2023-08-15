@@ -53,7 +53,7 @@ class Elastic(Process):
 
         # If we are defining a ca_file use ssl_contexts with the ca_file
         # else disable ca_certs and verify_certs and don't use ssl_context
-        if self.config['cafile'] != "":
+        if 'cafile' in self.config and self.config['cafile'] != "":
 
             context = ssl.create_default_context(cafile=self.config['cafile'])
             CONTEXT_VERIFY_MODES = {
