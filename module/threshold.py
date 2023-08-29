@@ -38,6 +38,10 @@ class ThresholdRule(BaseRule):
 
         doc_searches = []
 
+        # Force this to a list for backwards compatibility
+        if isinstance(key_fields, str):
+            key_fields = [key_fields]
+
         try:
             hits = False
             if mode == 'cardinality':
