@@ -2003,11 +2003,11 @@ class Detector(Process):
                 f()
 
             # Run rules in its own thread
-            #with ThreadPoolExecutor(max_workers=2) as executor:
-            #    executor.map(run_func, [self.run_rules, self.assess_rules])
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                executor.map(run_func, [self.run_rules, self.assess_rules])
 
-            self.run_rules()
-            self.assess_rules()
+            #self.run_rules()
+            #self.assess_rules()
 
             self.update_input_mappings()
             self.logger.info('Run complete, waiting')
