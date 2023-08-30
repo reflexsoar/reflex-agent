@@ -13,6 +13,16 @@ class ThresholdRule(BaseRule):
         super().__init__(detection, detection_input, credential, agent, signature_fields, field_mapping)
         self._config = self.detection.threshold_config
 
+        # NOTE: Legacy support for the old threshold config, remove in future - BC 2023-08-30
+        if 'mode' not in self._config:
+            if 'key_field' in self._config and self._config['per_field'] == True:
+                self._config['mode'] = 'terms'
+            elif 'key_field' in self._config and self._config['per_field'] == False:
+                self._config['mode'] = 'cardinality'
+            else:
+                self._config['mode'] = 'count'
+        # ####
+
         if self._config['mode'] != 'count':
             self.create_multi_term_aggregation()
             self.query["size"] = 0
