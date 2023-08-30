@@ -83,6 +83,9 @@ class Detection(JSONSerializable):
                             if now_time >= from_time and now_time <= to_time:
                                 schedule_allows = True
                                 break
+                    else:
+                        schedule_allows = True
+                        break
 
         # If the schedule doesn't allow us to run, return False
         if not schedule_allows:
@@ -1691,6 +1694,8 @@ class Detector(Process):
         except Exception as e:
             self.logger.error(f"Error parsing detection: {e}")
             return
+        
+
 
         try:
             if detection.should_run(catchup_period=self.config['catchup_period']):
