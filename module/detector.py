@@ -1688,7 +1688,6 @@ class Detector(Process):
         Executes a Detection Rule against the defined input on the rule and returns the results
         as events to the API
         """
-        print(rule)
         try:
             detection = Detection(**rule)
         except Exception as e:
