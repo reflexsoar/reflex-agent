@@ -201,9 +201,6 @@ class ThresholdRule(BaseRule):
             }
         }
 
-        import json
-        #print(json.dumps(query, indent=2))
-
         # Run the query
         data = self.elastic.conn.search(
             index=self.detection_input['config']['index'], body=query)

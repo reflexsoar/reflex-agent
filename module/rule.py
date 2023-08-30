@@ -107,6 +107,8 @@ class BaseRule:
             if not self.drop:
                 self.agent.process_events(docs, True)
 
+            
+
     def writeback(self, events):
         # If the environment variable for writeback_index is set, write the results to the index
         # using the bulk helper and reusing the elastic.conn connection object
@@ -201,7 +203,7 @@ class BaseRule:
         start_timer = time.time()
 
         docs = self.execute()
-        #print(docs)
+        print(docs)
         if docs:
             self.ship_docs(docs)
 
