@@ -588,28 +588,32 @@ class Detector(Process):
         if response and response.status_code == 200:
             self.detection_rules = response.json()['detections']
             self.logger.info(f"Loaded {len(self.detection_rules)} detections")
+        
+        try:
 
-        # Load all the input configurations for each detection
-        self.inputs = {}
-        input_uuids = []
-        if hasattr(self, 'detection_rules'):
-            for rule in self.detection_rules:
-                source = rule['source']
-                if source['uuid'] not in input_uuids:
-                    input_uuids.append(source['uuid'])
+            # Load all the input configurations for each detection
+            self.inputs = {}
+            input_uuids = []
+            if hasattr(self, 'detection_rules'):
+                for rule in self.detection_rules:
+                    source = rule['source']
+                    if source['uuid'] not in input_uuids:
+                        input_uuids.append(source['uuid'])
 
-        # Get the configuration for each input
-        for input_uuid in input_uuids:
-            _input = self.agent.get_input(input_uuid)
-            if _input:
-                self.inputs[input_uuid] = _input
+            # Get the configuration for each input
+            for input_uuid in input_uuids:
+                _input = self.agent.get_input(input_uuid)
+                if _input:
+                    self.inputs[input_uuid] = _input
 
-        # Get the credential for each input
-        for input_uuid in self.inputs:
-            credential_uuid = self.inputs[input_uuid]['credential']
-            if credential_uuid not in self.credentials:
-                self.credentials[credential_uuid] = self.agent.fetch_credentials(
-                    credential_uuid)
+            # Get the credential for each input
+            for input_uuid in self.inputs:
+                credential_uuid = self.inputs[input_uuid]['credential']
+                if credential_uuid not in self.credentials:
+                    self.credentials[credential_uuid] = self.agent.fetch_credentials(
+                        credential_uuid)
+        except Exception as e:
+            self.logger.error(f"Error loading detections: {e}")
 
     def shutdown(self):
         """
