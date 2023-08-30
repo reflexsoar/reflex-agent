@@ -29,6 +29,8 @@ class ThresholdRule(BaseRule):
         else:
             self.query["size"] = self._config["max_events"]
 
+        print(self.query_as_json())
+
     def execute(self):
 
         docs = []
@@ -47,8 +49,6 @@ class ThresholdRule(BaseRule):
         mode = self._config['mode']
 
         doc_searches = []
-
-        print(self.query_as_json())
 
         # Force this to a list for backwards compatibility
         if isinstance(key_fields, str):
