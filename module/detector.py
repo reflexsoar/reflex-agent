@@ -1782,15 +1782,13 @@ class Detector(Process):
                     rule_types = {
                         0: self.match_rule,
                         #1: self.threshold_rule,
-                        1: ThresholdRule(detection, _input, credential, self.agent, signature_fields, field_mapping),
+                        1: ThresholdRule,
                         2: self.metric_rule,
                         3: self.mismatch_rule,
                         4: self.new_terms_rule,
                         5: self.indicator_match_rule,
                         6: self.data_source_monitor_rule
                     }
-
-                    self.logger.info(f"Running rule type {detection.rule_type}")
 
                     detection.last_run = datetime.datetime.utcnow().isoformat()
 
@@ -1799,7 +1797,8 @@ class Detector(Process):
                             detection, credential, _input, signature_fields, field_mapping)
                     
                     if detection.rule_type == 1:
-                        rule_types[detection.rule_type].run()
+                        threshold_rule = rule_types[detection.rule_type](detection, _input, credential, self.agent, signature_fields, field_mapping)
+                        threshold_rule.run()
                         
                     if detection.rule_type == 0:
 
