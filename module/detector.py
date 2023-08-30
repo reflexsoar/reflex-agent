@@ -1790,6 +1790,8 @@ class Detector(Process):
                         6: self.data_source_monitor_rule
                     }
 
+                    self.logger.info(f"Running rule type {detection.rule_type}")
+
                     detection.last_run = datetime.datetime.utcnow().isoformat()
 
                     if detection.rule_type not in [0,1]:
