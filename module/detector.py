@@ -1685,7 +1685,12 @@ class Detector(Process):
         Executes a Detection Rule against the defined input on the rule and returns the results
         as events to the API
         """
-        detection = Detection(**rule)
+        print(rule)
+        try:
+            detection = Detection(**rule)
+        except Exception as e:
+            self.logger.error(f"Error parsing detection: {e}")
+            return
 
         try:
             if detection.should_run(catchup_period=self.config['catchup_period']):
@@ -1943,10 +1948,10 @@ class Detector(Process):
         Runs the set of rules configured for this detection agent
         """
 
-        #with ThreadPoolExecutor(max_workers=self.config['concurrent_rules']) as executor:
-        #    executor.map(self.execute, self.detection_rules)
+        with ThreadPoolExecutor(max_workers=self.config['concurrent_rules']) as executor:
+            executor.map(self.execute, self.detection_rules)
 
-        
+        '''
 
         def split_rules(rules, concurrent_rules):
             """
@@ -1979,7 +1984,7 @@ class Detector(Process):
             # Send the hits as events
 
             # Update each rules last_run date and hits count
-        
+        '''
 
     def run(self):
         """
