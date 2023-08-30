@@ -1687,8 +1687,6 @@ class Detector(Process):
         """
         detection = Detection(**rule)
 
-        print(detection.jsonify())
-
         try:
             if detection.should_run(catchup_period=self.config['catchup_period']):
                 input_uuid = detection.source['uuid']
@@ -1945,10 +1943,10 @@ class Detector(Process):
         Runs the set of rules configured for this detection agent
         """
 
-        with ThreadPoolExecutor(max_workers=self.config['concurrent_rules']) as executor:
-            executor.map(self.execute, self.detection_rules)
+        #with ThreadPoolExecutor(max_workers=self.config['concurrent_rules']) as executor:
+        #    executor.map(self.execute, self.detection_rules)
 
-        '''
+        
 
         def split_rules(rules, concurrent_rules):
             """
@@ -1981,7 +1979,7 @@ class Detector(Process):
             # Send the hits as events
 
             # Update each rules last_run date and hits count
-        '''
+        
 
     def run(self):
         """
