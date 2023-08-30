@@ -1942,6 +1942,7 @@ class Detector(Process):
         """
         Runs the set of rules configured for this detection agent
         """
+        self.logger.info(self.config)
 
         with ThreadPoolExecutor(max_workers=self.config['concurrent_rules']) as executor:
             executor.map(self.execute, self.detection_rules)
@@ -1991,17 +1992,15 @@ class Detector(Process):
             self.logger.info('Fetching detections')
             self.load_detections()
 
-            print(self.config)
-
             def run_func(f):
                 f()
 
             # Run rules in its own thread
-            with ThreadPoolExecutor(max_workers=2) as executor:
-                executor.map(run_func, [self.run_rules, self.assess_rules])
+            #with ThreadPoolExecutor(max_workers=2) as executor:
+            #    executor.map(run_func, [self.run_rules, self.assess_rules])
 
-            #self.run_rules()
-            #self.assess_rules()
+            self.run_rules()
+            self.assess_rules()
 
             self.update_input_mappings()
             self.logger.info('Run complete, waiting')
