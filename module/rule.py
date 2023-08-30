@@ -203,22 +203,25 @@ class BaseRule:
         start_timer = time.time()
 
         docs = self.execute()
-        print(docs)
+        
         if docs:
             self.ship_docs(docs)
 
         end_timer = time.time()
 
         total_hits = self.detection.total_hits if self.detection.total_hits else 0
+        
 
         update_payload = {
             'last_run': self.detection.last_run,
-            'hits': len(docs),
             'time_taken': (end_timer - start_timer)*1000,
             'query_time_taken': self.query_time,
-            'total_hits': total_hits + len(docs),
-            'last_hit': datetime.utcnow().isoformat()
         }
+
+        if len(docs) > 0:
+            update_payload['last_hit'] = datetime.utcnow().isoformat()
+            update_payload['total_hits'] = total_hits + len(docs)
+            update_payload['hits'] = len(docs)
 
         self.agent.update_detection(self.detection.uuid, payload=update_payload)
 

@@ -48,6 +48,8 @@ class ThresholdRule(BaseRule):
 
         doc_searches = []
 
+        print(self.query_as_json())
+
         # Force this to a list for backwards compatibility
         if isinstance(key_fields, str):
             key_fields = [key_fields]
@@ -103,8 +105,6 @@ class ThresholdRule(BaseRule):
             #logger.error(f"[!] Rule \"{rule_name}\" failed to match")
             #logger.error(e)
             #logger.error(data)
-
-        print(doc_searches)
 
         with ThreadPoolExecutor(max_workers=5) as executor:
             futures = [executor.submit(self.fetch_documents, fields_values=doc_search, threshold_field=threshold_field) for doc_search in doc_searches]
@@ -206,8 +206,6 @@ class ThresholdRule(BaseRule):
         # Run the query
         data = self.elastic.conn.search(
             index=self.detection_input['config']['index'], body=query)
-        
-        print(data)
         
         #if 'took' in data:
         #    self.query_time += data['took']
