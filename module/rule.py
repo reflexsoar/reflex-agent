@@ -23,6 +23,8 @@ class BaseRule:
         self.credential = credential
         self.signature_fields = signature_fields
         self.field_mapping = field_mapping
+        self.has_errors = False
+        self.errors = []
 
         if not detection_input:
             raise ValueError('Detection input is required')
@@ -51,6 +53,11 @@ class BaseRule:
         self.set_base_filter()
         self.set_time_range()
         self.build_exceptions()
+
+    def add_error(self, error_message):
+        ''' Adds an error to the list of errors '''
+        self.errors.append(error_message)
+        self.error = True
 
     def suppress_events(self, events):
         '''

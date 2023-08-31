@@ -33,8 +33,6 @@ class ThresholdRule(BaseRule):
         else:
             self.query["size"] = self._config["max_events"]
 
-        logger.info(self.query_as_json())
-
     def execute(self):
 
         docs = []
@@ -84,7 +82,7 @@ class ThresholdRule(BaseRule):
                             if self.test_threshold(value, operator, threshold):
                                 hits = True
                                 doc_searches.append(dict(zip([threshold_field], [bucket['key']])))
-                                logger.warning(f"[!] Rule \"{rule_name}\" has matched - {value} {operator} {threshold} - {bucket['key']}")
+                                #logger.warning(f"[!] Rule \"{rule_name}\" has matched - {value} {operator} {threshold} - {bucket['key']}")
                         else:
                             for _bucket in bucket[threshold_field]['buckets']:
                                 value = _bucket['doc_count']
@@ -92,22 +90,19 @@ class ThresholdRule(BaseRule):
                                     hits = True
                                     key_values = dict(zip([threshold_field], [_bucket['key']]))
                                     doc_searches.append(key_values)
-                                    logger.warning(f"[!] Rule \"{rule_name}\" has matched - {value} {operator} {threshold} - {bucket['key']} to {_bucket['key']}")
+                                    #logger.warning(f"[!] Rule \"{rule_name}\" has matched - {value} {operator} {threshold} - {bucket['key']} to {_bucket['key']}")
             elif mode == 'count':
                 value = data['hits']['total']['value']
                 if self.test_threshold(value, operator, threshold):
                     hits = True
                     docs.extend(data['hits']['hits'])
-                    logger.warning(f"[!] Rule \"{rule_name}\" has matched - {value} {operator} {threshold}")
+                    #logger.warning(f"[!] Rule \"{rule_name}\" has matched - {value} {operator} {threshold}")
                 #print(json.dumps(data['aggregations'], indent=2))
 
-            if not hits:
-                logger.success(f"[i] Rule \"{rule_name}\" did not match")
+            #if not hits:
+                #logger.success(f"[i] Rule \"{rule_name}\" did not match")
         except KeyError as e:
-            print(e)
-            logger.error(f"[!] Rule \"{rule_name}\" failed to match")
-            logger.error(e)
-            logger.error(data)
+            self.add_error(e)
 
         with ThreadPoolExecutor(max_workers=5) as executor:
             futures = [executor.submit(self.fetch_documents, fields_values=doc_search, threshold_field=threshold_field) for doc_search in doc_searches]
@@ -206,19 +201,20 @@ class ThresholdRule(BaseRule):
             }
         }
 
-        logger.info(query)
-
         # Run the query
-        data = self.elastic.conn.search(
-            index=self.detection_input['config']['index'], body=query)
-        
-        #if 'took' in data:
-        #    self.query_time += data['took']
-        
-        # Loop through the buckets and append the hits to the documents list
-        for bucket in data['aggregations']['1']['buckets']:
-            if bucket['hits']['hits']['total']['value'] > 0:
-                documents.extend(bucket['hits']['hits']['hits'])
+        try:
+            data = self.elastic.conn.search(
+                index=self.detection_input['config']['index'], body=query)
+            
+            # Loop through the buckets and append the hits to the documents list
+            for bucket in data['aggregations']['1']['buckets']:
+                if bucket['hits']['hits']['total']['value'] > 0:
+                    documents.extend(bucket['hits']['hits']['hits'])
+        except Exception as e:
+            self.add_error(e)
+            #logger.error(f"Rule \"{self.detection.name}\" failed to fetch documents. {e}")
+            return []
+
         return documents
     
     def create_multi_term_aggregation(self):
