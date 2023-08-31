@@ -54,7 +54,8 @@ class ThresholdRule(BaseRule):
 
         doc_searches = []
 
-        
+        if len(key_fields) == 1 and threshold_field is None:
+            threshold_field = key_fields[0]
 
         try:
             hits = False
