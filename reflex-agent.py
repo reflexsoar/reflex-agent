@@ -112,6 +112,7 @@ if __name__ == "__main__":
             old_revision = agent.config['policy']['revision']
             policy_uuid = agent.config['policy']['uuid']
             agent.get_config()
+
             if agent.config['policy']['revision'] != old_revision or agent.config['policy']['uuid'] != policy_uuid:
                 restart_roles = True
 
@@ -139,7 +140,7 @@ if __name__ == "__main__":
 
                 if agent.config['roles']:
                     for role in agent_roles:
-                        if role in agent.config['roles'] and not role_processes[role]:
+                        if role in agent.config['roles'] and (role not in role_processes or role_processes[role] is None):
 
                             # Start up the role process
                             logger.info(f"Agent is a {role}, spawning {role} role")
@@ -168,7 +169,7 @@ if __name__ == "__main__":
                             role_processes[role].terminate()
                             role_processes[role].join()
                             agent.role_health[role] = 0
-                            role_processes[role] = None                    
+                            role_processes[role] = None
 
 
                     if 'poller' in agent.config['roles']:

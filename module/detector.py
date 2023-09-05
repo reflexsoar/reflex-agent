@@ -8,6 +8,7 @@ import math
 import time
 import logging
 import datetime
+from pytz import timezone
 from dateutil import parser as date_parser
 from multiprocessing import Process, Event
 from multiprocessing.pool import ThreadPool
@@ -17,9 +18,9 @@ from opensearchpy import ConnectionTimeout, NotFoundError
 from opensearchpy.helpers import bulk
 from utils.base import JSONSerializable
 from utils.elasticsearch import Elastic
-from utils.helpers import create_piped_aggregation
 from utils.indexed_dict import IndexedDict
-from .rule import BaseRule
+from .threshold import ThresholdRule
+#from .rule import BaseRule
 
 
 class Detection(JSONSerializable):
@@ -50,6 +51,45 @@ class Detection(JSONSerializable):
             catchup_period (int) - The maximum time in minutes that the detection should adjust
                                     the lookbehind to find missed detections
         '''
+
+        schedule_allows = False
+        # Check to see if the current day of the week and time is in the schedule
+        if hasattr(self, 'schedule') and isinstance(self.schedule, dict):
+
+            # Adjust for the timezone if it is set
+            if hasattr(self, 'schedule_timezone'):
+                now = datetime.datetime.now(timezone(self.schedule_timezone))
+            else:
+                now = datetime.datetime.utcnow()
+                
+            for day_of_week in self.schedule:
+                day_config = self.schedule[day_of_week]
+                if 'active' in day_config and day_config['active']:
+                    if day_of_week == now.strftime("%A").lower():
+
+                        # For each define from to in hours check if the 
+                        # current hours and minutes is within the range
+                        for time_range in day_config['hours']:
+                            
+                            # Get the current hours and minutes in 24 hour format
+                            now_time = f"{now.hour:02d}{now.minute:02d}"
+                            now_time = int(now_time)
+
+                            # Get the from and to hours and minutes in 24 hour format
+                            from_time = int(time_range["from"].replace(":", ""))
+                            to_time = int(time_range["to"].replace(":", ""))
+
+                            # If the current time is within the range, allow the run
+                            if now_time >= from_time and now_time <= to_time:
+                                schedule_allows = True
+                                break
+                else:
+                    schedule_allows = True
+                    break
+
+        # If the schedule doesn't allow us to run, return False
+        if not schedule_allows:
+            return False
 
         if hasattr(self, 'last_run'):
 
@@ -551,28 +591,32 @@ class Detector(Process):
         if response and response.status_code == 200:
             self.detection_rules = response.json()['detections']
             self.logger.info(f"Loaded {len(self.detection_rules)} detections")
+        
+        try:
 
-        # Load all the input configurations for each detection
-        self.inputs = {}
-        input_uuids = []
-        if hasattr(self, 'detection_rules'):
-            for rule in self.detection_rules:
-                source = rule['source']
-                if source['uuid'] not in input_uuids:
-                    input_uuids.append(source['uuid'])
+            # Load all the input configurations for each detection
+            self.inputs = {}
+            input_uuids = []
+            if hasattr(self, 'detection_rules'):
+                for rule in self.detection_rules:
+                    source = rule['source']
+                    if source['uuid'] not in input_uuids:
+                        input_uuids.append(source['uuid'])
 
-        # Get the configuration for each input
-        for input_uuid in input_uuids:
-            _input = self.agent.get_input(input_uuid)
-            if _input:
-                self.inputs[input_uuid] = _input
+            # Get the configuration for each input
+            for input_uuid in input_uuids:
+                _input = self.agent.get_input(input_uuid)
+                if _input:
+                    self.inputs[input_uuid] = _input
 
-        # Get the credential for each input
-        for input_uuid in self.inputs:
-            credential_uuid = self.inputs[input_uuid]['credential']
-            if credential_uuid not in self.credentials:
-                self.credentials[credential_uuid] = self.agent.fetch_credentials(
-                    credential_uuid)
+            # Get the credential for each input
+            for input_uuid in self.inputs:
+                credential_uuid = self.inputs[input_uuid]['credential']
+                if credential_uuid not in self.credentials:
+                    self.credentials[credential_uuid] = self.agent.fetch_credentials(
+                        credential_uuid)
+        except Exception as e:
+            self.logger.error(f"Error loading detections: {e}")
 
     def shutdown(self):
         """
@@ -1644,7 +1688,11 @@ class Detector(Process):
         Executes a Detection Rule against the defined input on the rule and returns the results
         as events to the API
         """
-        detection = Detection(**rule)
+        try:
+            detection = Detection(**rule)
+        except Exception as e:
+            self.logger.error(f"Error parsing detection: {e}")
+            return
 
         try:
             if detection.should_run(catchup_period=self.config['catchup_period']):
@@ -1733,7 +1781,8 @@ class Detector(Process):
 
                     rule_types = {
                         0: self.match_rule,
-                        1: self.threshold_rule,
+                        #1: self.threshold_rule,
+                        1: ThresholdRule,
                         2: self.metric_rule,
                         3: self.mismatch_rule,
                         4: self.new_terms_rule,
@@ -1743,10 +1792,14 @@ class Detector(Process):
 
                     detection.last_run = datetime.datetime.utcnow().isoformat()
 
-                    if detection.rule_type != 0:
+                    if detection.rule_type not in [0,1]:
                         rule_types[detection.rule_type](
                             detection, credential, _input, signature_fields, field_mapping)
-
+                    
+                    if detection.rule_type == 1:
+                        threshold_rule = rule_types[detection.rule_type](detection, _input, credential, self.agent, signature_fields, field_mapping)
+                        threshold_rule.run()
+                        
                     if detection.rule_type == 0:
 
                         if 'config' in _input:

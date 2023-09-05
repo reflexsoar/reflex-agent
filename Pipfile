@@ -18,6 +18,7 @@ retry = "*"
 ldap3 = "*"
 python-dateutil = "*"
 loguru = "*"
+pytz = "*"
 
 [requires]
 python_version = "3.8"
