@@ -1,0 +1,2 @@
+class OutputError(Exception):
+    pass
