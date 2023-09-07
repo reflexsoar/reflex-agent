@@ -11,7 +11,7 @@ from utils.base import Agent, Plugin
 from multiprocessing import Process, Queue
 from utils.elasticsearch import Elastic
 from dotenv import load_dotenv
-from module import Detector, Runner
+from module import Detector, Runner, Poller as PollerNew
 from loguru import logger
 
 
@@ -100,7 +100,8 @@ if __name__ == "__main__":
 
     role_processes = {
         'runner': None,
-        'detector': None
+        'detector': None,
+        #'poller': None
     }
 
     logger.info('Running agent')
@@ -121,12 +122,13 @@ if __name__ == "__main__":
                 agent_roles = {
                     'runner': Runner,
                     'detector': Detector,
-                    #'poller': Poller,
+                    #'poller': PollerNew,
                 }
 
                 role_configs = {
                     'runner': agent.config['policy'].get('runner_config', None),
-                    'detector': agent.config['policy'].get('detector_config', None)
+                    'detector': agent.config['policy'].get('detector_config', None),
+                    #'poller': agent.config['policy'].get('poller_config', None),
                 }
 
                 if restart_roles:
@@ -237,4 +239,5 @@ if __name__ == "__main__":
             print("Exception type:", exception_type)
             print("Exception object:", exception_object)
             print("Exception traceback:", exception_traceback)
+            print("Exception line number:", exception_traceback.tb_lineno)
             logger.error('Agent failed with exception: {}'.format(e))
