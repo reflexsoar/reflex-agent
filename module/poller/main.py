@@ -1,6 +1,7 @@
 import time
 from loguru import logger
 from multiprocessing import Process, Event
+from integrations import LOADED_OUTPUTS
 
 POLLER = 'poller'
 
@@ -29,13 +30,14 @@ class Poller(Process):
 
         self.log_level = log_level
         self.agent = agent
-        self.inputs = {}
         self.credentials = {}
         self.detection_rules = []
         self.should_exit = Event()
         self.new_term_state_table = {}
         self.running_inputs = {}
         self.configured_outputs = {}
+        self.initialized_outputs = {}
+        self.configured_inputs = {}
 
     def start_input(self):
         '''
@@ -55,7 +57,7 @@ class Poller(Process):
         '''
         response = self.agent.call_mgmt_api('agent/policy/inputs')
         if response.status_code == 200:
-            self.inputs = response.json()['inputs']
+            self.configured_inputs = response.json()['inputs']
         else:
             logger.error(f"Failed to get input policy: {response.text}")
 
@@ -78,6 +80,33 @@ class Poller(Process):
             logger.info('Loading Input/Output Policy')
             self.get_output_policy()
             logger.info(f"Loaded {len(self.configured_outputs)} outputs")
+
+            for output in self.configured_outputs:
+                output_class = LOADED_OUTPUTS[output['integration']][output['name']]
+
+                output_obj = output_class(**output['settings'], ignore_ssl=True) # FIX THIS LATER
+                self.initialized_outputs[output['configuration_uuid']+"|"+output['name']] = output_obj
+
             self.get_input_policy()
-            logger.info(f"Loaded {len(self.inputs)} inputs")
+            logger.info(f"Loaded {len(self.configured_inputs)} inputs")
+
+            for i in self.configured_inputs:
+                if i['name'] == 'read_from_file': 
+                    target_outputs = []
+
+                    if 'outputs' not in i['settings']:
+                        continue
+
+                    for output in i['settings']['outputs']:
+                        configuration_uuid = output['value'].split("|")[1]
+                        name = output['value'].split("|")[2]
+                        target_outputs.append(self.initialized_outputs[configuration_uuid+"|"+name])
+
+                    with open(i['settings']['file_path'], 'r') as f:
+                        for line in f:
+                            print(line)
+                            for target_output in target_outputs:
+                                print("REEE")
+                                target_output.send(line)
+
             time.sleep(30)

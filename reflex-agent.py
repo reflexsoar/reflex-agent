@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 from module import Detector, Runner, Poller as PollerNew
 from loguru import logger
 
+#from integrations import LOADED_OUTPUTS
 
 #logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logger.info)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -105,6 +106,7 @@ if __name__ == "__main__":
     }
 
     logger.info('Running agent')
+    #logger.info(f"Loaded {len(LOADED_OUTPUTS)} outputs")
    
     while True:
 

@@ -8,9 +8,10 @@ class Output:
         """
         pass
 
-    def send(self, message):
+    def send(self, message, event_type: str = None, envelope=None):
+        '''Send message'''
         if isinstance(message, list):
             for m in message:
-                logger.info(message)
+                self._send(m, event_type, envelope)
         else:
-            logger.info(message)
+            self._send(message, event_type, envelope)

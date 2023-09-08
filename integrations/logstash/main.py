@@ -4,12 +4,13 @@ import socket
 from loguru import logger
 from requests import Session
 from requests.adapters import HTTPAdapter, Retry
-from ...module.base import Output
-from ...module.base.errors import OutputError
-
-PRODUCT_IDENTIFIER = "f6f65705-587f-4759-92b0-33696b1f240f"
+from module.base.output import Output
+from module.base.errors import OutputError
 
 class LogstashOutput(Output):
+
+    product_identifier = "f6f65705-587f-4759-92b0-33696b1f240f"
+    action_name = 'send_logs'
 
     def __init__(self, hostname: str, port: int, protocol: str,
                  log_name: str = 'default', *args, **kwargs) -> None:
@@ -21,7 +22,11 @@ class LogstashOutput(Output):
             protocol (str): The protocol to use to connect to the Logstash server
         """
 
-        self.hostname = hostname
+        if isinstance(hostname, list):
+            self.hostname = hostname[0]
+        else:
+            self.hostname = hostname
+
         self.port = port
         self.protocol = protocol
         self.log_name = log_name
@@ -30,6 +35,7 @@ class LogstashOutput(Output):
         self.client_cert = None
         self.verify_ssl = True
         self._session = Session()
+        self.envelope = None
 
         if 'auth_method' in kwargs:
             self.auth_method = kwargs['auth_method']
@@ -44,6 +50,9 @@ class LogstashOutput(Output):
                 if not os.path.exists(self.client_cert):
                     raise Exception(
                         f"Client certificate {self.client_cert} does not exist.")
+                
+        if 'envelope' in kwargs:
+            self.envelope = kwargs['envelope']
 
         if 'client_key' in kwargs:
             self.client_key = kwargs['client_key']
@@ -109,6 +118,9 @@ class LogstashOutput(Output):
         # the message.
         # If the envelope is a dot notation string, it will be used to
         # create a nested dictionary.
+        if self.envelope:
+            envelope = self.envelope
+            
         if envelope:
             if isinstance(envelope, str):
                 if '.' in envelope:
