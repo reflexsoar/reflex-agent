@@ -996,6 +996,8 @@ class Detector(Process):
             }
         }
 
+        scroll_id = None
+
         # Run the query
         try:
             matched_indicators = []
@@ -1029,7 +1031,9 @@ class Detector(Process):
                     response = elastic.conn.search(
                         index=_input['config']['index'], body=query, scroll='30s')
 
-                    scroll_id = response['_scroll_id']
+                    if '_scroll_id' in response:
+                        scroll_id = response['_scroll_id']
+                        
                     scroll_size = response['hits']['total']['value']
                     query_time += response['took']
 
@@ -1040,7 +1044,8 @@ class Detector(Process):
                     while (scroll_size > 0):
                         response = elastic.conn.scroll(
                             scroll_id=scroll_id, scroll='30s')
-                        scroll_id = response['_scroll_id']
+                        if '_scroll_id' in response:
+                            scroll_id = response['_scroll_id']
                         scroll_size = len(response['hits']['hits'])
                         query_time += response['took']
                         docs += response['hits']['hits']
@@ -1606,7 +1611,10 @@ class Detector(Process):
         res = elastic.conn.search(
             index=_input['config']['index'], body=query, scroll='30s')
 
-        scroll_id = res['_scroll_id']
+        scroll_id = None
+        if '_scroll_id' in res:
+            scroll_id = res['_scroll_id']
+
         if 'total' in res['hits']:
             if len(res['hits']['hits']) > 0:
                 self.logger.info(
