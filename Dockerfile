@@ -5,6 +5,7 @@ COPY Pipfile /
 COPY Pipfile.lock /
 COPY utils /utils
 COPY module /module
+COPY integrations /integrations
 
 RUN mkdir /plugins \
 && pip install --upgrade pip \

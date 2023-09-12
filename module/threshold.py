@@ -58,22 +58,23 @@ class ThresholdRule(BaseRule):
         try:
             hits = False
             if mode == 'cardinality':
-                if 'buckets' in data['aggregations']["1"]:
-                    for bucket in data['aggregations']["1"]["buckets"]:
-                        value = bucket[threshold_field]['value']
+                if 'aggregations' in data:
+                    if 'buckets' in data['aggregations']["1"]:
+                        for bucket in data['aggregations']["1"]["buckets"]:
+                            value = bucket[threshold_field]['value']
+                            if self.test_threshold(value, operator, threshold):
+                                hits = True
+                                # Zip the bucket key_fields and bucket keys together
+                                # and create a dictionary of the key_fields and bucket keys
+                                key_values = dict(zip(key_fields, bucket['key']))
+                                doc_searches.append(key_values)
+                                #logger.warning(f"[!] Rule \"{rule_name}\" has matched - {value} {operator} {threshold} - {bucket['key']}")
+                    else:
+                        value = data['aggregations']["1"]["value"]
                         if self.test_threshold(value, operator, threshold):
                             hits = True
-                            # Zip the bucket key_fields and bucket keys together
-                            # and create a dictionary of the key_fields and bucket keys
-                            key_values = dict(zip(key_fields, bucket['key']))
-                            doc_searches.append(key_values)
-                            #logger.warning(f"[!] Rule \"{rule_name}\" has matched - {value} {operator} {threshold} - {bucket['key']}")
-                else:
-                    value = data['aggregations']["1"]["value"]
-                    if self.test_threshold(value, operator, threshold):
-                        hits = True
-                        doc_searches.append({})
-                        #logger.warning(f"[!] Rule \"{rule_name}\" has matched - {value} {operator} {threshold}")
+                            doc_searches.append({})
+                            #logger.warning(f"[!] Rule \"{rule_name}\" has matched - {value} {operator} {threshold}")
             elif mode == 'terms':
                 if 'aggregations' in data:
                     for bucket in data['aggregations']["1"]["buckets"]:
@@ -207,9 +208,10 @@ class ThresholdRule(BaseRule):
                 index=self.detection_input['config']['index'], body=query)
             
             # Loop through the buckets and append the hits to the documents list
-            for bucket in data['aggregations']['1']['buckets']:
-                if bucket['hits']['hits']['total']['value'] > 0:
-                    documents.extend(bucket['hits']['hits']['hits'])
+            if 'aggregations' in data:
+                for bucket in data['aggregations']['1']['buckets']:
+                    if bucket['hits']['hits']['total']['value'] > 0:
+                        documents.extend(bucket['hits']['hits']['hits'])
         except Exception as e:
             self.add_error(e)
             #logger.error(f"Rule \"{self.detection.name}\" failed to fetch documents. {e}")
