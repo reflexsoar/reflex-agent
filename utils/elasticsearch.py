@@ -61,8 +61,6 @@ class Elastic(Process):
                 "optional": ssl.CERT_OPTIONAL,
                 "required": ssl.CERT_REQUIRED
             }
-
-            context.minimum_version = ssl.TLSVersion.TLSv1_2
         
             context.verify_mode = CONTEXT_VERIFY_MODES[self.config['cert_verification']]
             context.check_hostname = self.config['check_hostname']
