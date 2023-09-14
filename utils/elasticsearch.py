@@ -64,7 +64,7 @@ class Elastic(Process):
         
             context.verify_mode = CONTEXT_VERIFY_MODES[self.config['cert_verification']]
             context.check_hostname = self.config['check_hostname']
-            es_config['ssl_context'] = context        
+            es_config['ssl_context'] = context
         else:
             #es_config['ca_certs'] = False
             es_config['verify_certs'] = False
