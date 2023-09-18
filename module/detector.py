@@ -258,10 +258,20 @@ class Detector(Process):
         Builds the exceptions for a detection rule
         """
         if hasattr(detection, 'exceptions') and detection.exceptions != None:
+
             query["query"]["bool"]["must_not"] = []
+            
             for exception in detection.exceptions:
 
-                if 'condition' in exception and exception['condition'] == 'wildcard':
+                if 'list' in exception and exception['list']['uuid'] != None:
+                    list_values = self.agent.get_list_values(
+                        uuid=exception['list']['uuid'])
+                    exception['values'] = list_values
+
+                if 'condition' not in exception:
+                    continue
+
+                if exception['condition'] == 'wildcard':
                     for value in exception['values']:
                         query["query"]["bool"]["must_not"].append(
                             {
@@ -270,12 +280,24 @@ class Detector(Process):
                                 }
                             }
                         )
+                elif exception['condition'] == 'regexp':
+                    for value in exception['values']:
+                        query["query"]["bool"]["must_not"].append(
+                            {
+                                "regexp": {
+                                    f"{exception['field']}": value
+                                }
+                            }
+                        )
+                elif exception['condition'] == 'exists':
+                    query["query"]["bool"]["must_not"].append(
+                        {
+                            "exists": {
+                                "field": exception['field']
+                            }
+                        }
+                    )
                 else:
-                    if 'list' in exception and exception['list']['uuid'] != None:
-                        list_values = self.agent.get_list_values(
-                            uuid=exception['list']['uuid'])
-                        exception['values'] = list_values
-
                     query["query"]["bool"]["must_not"].append(
                         {
                             "terms": {
@@ -283,6 +305,7 @@ class Detector(Process):
                             }
                         }
                     )
+
         return query
 
     def exit(self):
