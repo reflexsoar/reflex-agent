@@ -653,6 +653,10 @@ class Detector(Process):
         e.g signal.rule.name should return the value of name
         '''
 
+        flat_key = '.'.join(field)
+        if flat_key in message:
+            return message[flat_key]
+
         if isinstance(field, str):
             # If the field exists as a flat field with .'s in it return the field
             if field in message:
@@ -1242,23 +1246,24 @@ class Detector(Process):
                 index=_input['config']['index'], body=query)
 
             if res:
-                cardinality = res['aggregations'][detection.new_terms_config['key_field']]['value']
-                if cardinality > detection.new_terms_config['max_terms']:
-                    self.logger.error(
-                        f"New terms rule {detection.uuid} has {cardinality} terms, which exceeds the maximum of {detection.new_terms_config['max_terms']}")
-                    update_payload = {
-                        'active': False,
-                    }
-                    if detection.warnings:
-                        update_payload['warnings'] = detection.warnings
-                        if isinstance(update_payload['warnings'], list) and 'max_terms_exceeded' not in update_payload['warnings']:
-                            update_payload['warnings'].append('max_terms_exceeded')
-                    else:
-                        update_payload['warnings'] = ['max_terms_exceeded']
+                if 'aggregations' in res:
+                    cardinality = res['aggregations'][detection.new_terms_config['key_field']]['value']
+                    if cardinality > detection.new_terms_config['max_terms']:
+                        self.logger.error(
+                            f"New terms rule {detection.uuid} has {cardinality} terms, which exceeds the maximum of {detection.new_terms_config['max_terms']}")
+                        update_payload = {
+                            'active': False,
+                        }
+                        if detection.warnings:
+                            update_payload['warnings'] = detection.warnings
+                            if isinstance(update_payload['warnings'], list) and 'max_terms_exceeded' not in update_payload['warnings']:
+                                update_payload['warnings'].append('max_terms_exceeded')
+                        else:
+                            update_payload['warnings'] = ['max_terms_exceeded']
 
-                    self.agent.update_detection(
-                        detection.uuid, payload=update_payload)
-                    return
+                        self.agent.update_detection(
+                            detection.uuid, payload=update_payload)
+                        return
 
             # Aggregate on the field where the terms should be found
             query["aggs"] = {
@@ -1334,9 +1339,10 @@ class Detector(Process):
         new_terms = []
         if res:
             query_time += res['took']
-            if res["aggregations"][detection.new_terms_config['key_field']]["buckets"]:
-                new_terms = [term["key"] for term in res["aggregations"]
-                             [detection.new_terms_config['key_field']]["buckets"]]
+            if 'aggregations' in res:
+                if res["aggregations"][detection.new_terms_config['key_field']]["buckets"]:
+                    new_terms = [term["key"] for term in res["aggregations"]
+                                [detection.new_terms_config['key_field']]["buckets"]]
 
         # Calculate the difference between the old and new terms
         net_new_terms = [term for term in new_terms if term not in old_terms]
@@ -1344,9 +1350,10 @@ class Detector(Process):
         if net_new_terms:
             self.set_new_term_state_entry(
                 detection.uuid, detection.new_terms_config['key_field'], new_terms)
-            for term in res["aggregations"][detection.new_terms_config['key_field']]["buckets"]:
-                if term["key"] in net_new_terms:
-                    docs += term["doc"]["hits"]["hits"]
+            if 'aggregations' in res:
+                for term in res["aggregations"][detection.new_terms_config['key_field']]["buckets"]:
+                    if term["key"] in net_new_terms:
+                        docs += term["doc"]["hits"]["hits"]
 
         if len(docs) > 0:
             docs = elastic.parse_events(docs, title=detection.name, signature_values=[

@@ -114,6 +114,10 @@ class Event(JSONSerializable):
             value: The extracted value, may be the response from this function calling itself again
         '''
 
+        flat_key = '.'.join(field)
+        if flat_key in message:
+            return message[flat_key]
+
         if isinstance(field, str):
             if field in message:
                 return message[field]
@@ -232,7 +236,7 @@ class Agent(object):
         self.access_token = os.getenv('ACCESS_TOKEN')
         self.console_url = os.getenv('CONSOLE_URL')
         self.ip = self.agent_ip()
-        self.VERSION_NUMBER = "2023.09.18-rc0"
+        self.VERSION_NUMBER = "2023.09.19-rc0"
 
         log_levels = {
             'DEBUG': logging.DEBUG,
