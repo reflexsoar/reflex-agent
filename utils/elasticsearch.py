@@ -333,6 +333,10 @@ class Elastic(Process):
             value: The extracted value, may be the response from this function calling itself again
         '''
 
+        flat_key = '.'.join(field)
+        if flat_key in message:
+            return message[flat_key]
+
         if isinstance(field, str):
             if field in message:
                 return message[field]

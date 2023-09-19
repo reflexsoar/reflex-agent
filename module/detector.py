@@ -653,6 +653,10 @@ class Detector(Process):
         e.g signal.rule.name should return the value of name
         '''
 
+        flat_key = '.'.join(field)
+        if flat_key in message:
+            return message[flat_key]
+
         if isinstance(field, str):
             # If the field exists as a flat field with .'s in it return the field
             if field in message:
