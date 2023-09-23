@@ -26,7 +26,8 @@ class MitreMapper(Process):
                 'concurrent_inputs': 10,
                 'graceful_exit': False,
                 'mapping_refresh_interval': 60,
-                'logging_level': log_level
+                'logging_level': log_level,
+                'assessment_days': 14
             }
 
         self.running = True
@@ -94,7 +95,22 @@ class MitreMapper(Process):
         # Build a multisearch query for each data source in the data source templates sources
         # array and then execute that search against the target input
 
+        assessment_days = self.config['assessment_days']
+
         query = {
+            "query": {
+                "bool": {
+                    "must": [
+                        {
+                            "range": {
+                                "@timestamp": {
+                                    "gte": f"now-{assessment_days}d",
+                                }
+                            }
+                        }
+                    ]
+                }
+            },
             "aggs": {},
             "size": 0
         }
