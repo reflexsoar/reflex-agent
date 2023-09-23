@@ -383,7 +383,7 @@ class Agent(object):
 
         username = ""
         secret = ""
-        self.logger.info('Fetching credentials')
+        #self.logger.info('Fetching credentials')
 
         # Fetch the username
         response = self.call_mgmt_api('credential/%s' % uuid)
