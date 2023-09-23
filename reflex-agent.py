@@ -132,7 +132,7 @@ if __name__ == "__main__":
                 role_configs = {
                     'runner': agent.config['policy'].get('runner_config', None),
                     'detector': agent.config['policy'].get('detector_config', None),
-                    'mitre': agent.config['policy'].get('mitre_config', None)
+                    'mitre': agent.config['policy'].get('mitre_mapper_config', None)
                     #'poller': agent.config['policy'].get('poller_config', None),
                 }
 

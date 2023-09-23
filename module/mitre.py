@@ -115,7 +115,6 @@ class MitreMapper(Process):
         observed_data_sources = []
         try:
             results = es.conn.search(index=target_input['config']['index'], body=query)
-            print(f"input: {target_input['uuid']}", results)
             if 'aggregations' in results:
                 for agg in results['aggregations']:
                     # If the count is greater than 0, add the data source to the list
@@ -151,7 +150,6 @@ class MitreMapper(Process):
         if response.status_code == 200:
             self.logger.info(f"Updated data sources for {uuid}")
         else:
-            print(response.request)
             self.logger.error(f"Failed to update data sources for {uuid}: {response.text}")
 
     def load_data_source_templates(self):
