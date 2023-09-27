@@ -238,7 +238,7 @@ class Agent(object):
         self.access_token = os.getenv('ACCESS_TOKEN')
         self.console_url = os.getenv('CONSOLE_URL')
         self.ip = self.agent_ip()
-        self.VERSION_NUMBER = "2023.09.20-rc0"
+        self.VERSION_NUMBER = "2023.09.26-rc0"
 
         log_levels = {
             'DEBUG': logging.DEBUG,
@@ -383,7 +383,7 @@ class Agent(object):
 
         username = ""
         secret = ""
-        self.logger.info('Fetching credentials')
+        #self.logger.info('Fetching credentials')
 
         # Fetch the username
         response = self.call_mgmt_api('credential/%s' % uuid)
