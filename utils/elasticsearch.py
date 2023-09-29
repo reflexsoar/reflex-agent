@@ -14,7 +14,7 @@ from .base import Event
 
 class Elastic(Process):
 
-    def __init__(self, config, field_mapping, credentials, signature_fields=[], input_uuid=None):
+    def __init__(self, config, field_mapping, credentials, signature_fields=[], input_uuid=None, timeout=30):
         ''' 
         Initializes a new Elasticsearch poller object
         which pushes information to the api
@@ -24,10 +24,10 @@ class Elastic(Process):
         self.status = 'waiting'
         self.credentials = credentials
         self.field_mapping = field_mapping
-        self.conn = self.build_es_connection()
         self.plugin_type = 'events'
         self.signature_fields = []
         self.input_uuid = input_uuid
+        self.timeout = timeout
 
         # If signature_fields are passed in, use them instead of the ones in the config file
         if signature_fields:
@@ -35,6 +35,8 @@ class Elastic(Process):
         else:
             if 'signature_fields' in config:
                 self.signature_fields = config['signature_fields']
+
+        self.conn = self.build_es_connection()
 
     
     def build_es_connection(self):
@@ -46,7 +48,7 @@ class Elastic(Process):
         # Create an empty configuration object
         es_config = {   
             'retry_on_timeout': True,
-            'timeout': 30,
+            'timeout': self.timeout,
             'max_retries': 3,
             'ssl_show_warn': False
         }
