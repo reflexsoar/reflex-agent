@@ -27,7 +27,8 @@ class MitreMapper(Process):
                 'graceful_exit': False,
                 'mapping_refresh_interval': 60,
                 'logging_level': log_level,
-                'assessment_days': 14
+                'assessment_days': 14,
+                'timeout': 60
             }
 
         self.running = True
@@ -62,7 +63,8 @@ class MitreMapper(Process):
             target_input['config'],
             {},
             credential,
-            []
+            [],
+            timeout=self.config['timeout']
         )
 
     def map_input_to_data_source(self, target_input):
