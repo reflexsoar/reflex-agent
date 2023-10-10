@@ -574,6 +574,67 @@ class Detector(Process):
                     f"Error getting average query time for rule {detection.name}: {e}")
                 update_payload['average_query_time'] = 0
 
+            # If the detection has a required_fields property, check to see if the fields
+            # exist in the index
+            if hasattr(detection, 'required_fields') and detection.required_fields != None:
+                if isinstance(detection.required_fields, str):
+                    required_fields = [detection.required_fields]
+                else:
+                    required_fields = detection.required_fields
+
+                missing_fields = []
+                for field in required_fields:
+                    
+                    # Run an exists query for each field to see if it exists
+                    exists_query = {
+                        "query": {
+                            "bool": {
+                                "must": [
+                                    {
+                                        "exists": {
+                                            "field": field
+                                        }
+                                    },
+                                    {
+                                        "range": {
+                                            "@timestamp": {
+                                                "gte": f"now-24h",
+                                                "lte": "now"
+                                            }
+                                        }
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                    
+                    # Use a count query to get the number of documents that have the field
+                    response = elastic.conn.count(
+                        index=_input['config']['index'], body=exists_query)
+                    if response['count'] == 0:
+                        missing_fields.append(field)
+
+                if detection.warnings == None:
+                    detection.warnings = []
+
+                # Strip all field warnings
+                if detection.warnings != None:
+                    remaining_warnings = [warning for warning in detection.warnings if not warning.startswith('missing-field:') and warning != 'missing-fields']
+                    detection.warnings = remaining_warnings
+
+                # If there are missing fields, add a warning to the detection else
+                # remove all mentions of missing-fields from the warnings
+                if len(missing_fields) > 0:
+                    for field in missing_fields:
+                        field_warning = f"missing-field: {field}"
+                        if field_warning not in detection.warnings:
+                            detection.warnings.append(field_warning)
+                    if 'missing-fields' not in detection.warnings:
+                        detection.warnings.append('missing-fields')
+
+                if detection.warnings != None and isinstance(detection.warnings, list):
+                    update_payload['warnings'] = detection.warnings
+
             self.agent.update_detection(detection.uuid, payload=update_payload)
 
         except Exception as e:
