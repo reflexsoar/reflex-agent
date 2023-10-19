@@ -413,6 +413,8 @@ class Elastic(Process):
         '''
 
         severities = {
+            'informational': 0,
+            'info': 0,
             'low': 1,
             'medium': 2,
             'high': 3,

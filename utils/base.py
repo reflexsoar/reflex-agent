@@ -31,10 +31,11 @@ def event_severity(sev):
     severity of an event
     '''
     severities = [
-        {'low': 0},
-        {'medium': 1},
-        {'high': 2},
-        {'critical': 3}
+        {'informational': 0},
+        {'low': 1},
+        {'medium': 2},
+        {'high': 3},
+        {'critical': 4}
     ]
     return severities[sev]
 
