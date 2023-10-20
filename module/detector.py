@@ -22,6 +22,8 @@ from utils.indexed_dict import IndexedDict
 from .threshold import ThresholdRule
 #from .rule import BaseRule
 
+es_logger = logging.getLogger('opensearch')
+es_logger.setLevel(logging.WARNING)
 
 class Detection(JSONSerializable):
     '''
@@ -443,6 +445,139 @@ class Detector(Process):
                     credential_uuid)
 
         return rules
+    
+    def _get_field_metrics(self, elastic, index, query, field):
+
+        FIELD_PREFIXES_EXCLUSIONS = ['event','host.os', '@', 'agent', 'process.pid',
+                             'process_pid', 'winlog.process.pid', 'winlog.process_pid',
+                             'winlog.task', "_", "winlog.opcode", "log.level", "winlog.provider_name",
+                             "winlog.api"]
+        
+        # If the field starts with one of the exclusions, return
+        for prefix in FIELD_PREFIXES_EXCLUSIONS:
+            if field.startswith(prefix):
+                return
+            
+        query['size'] = 0
+        query['aggs'] = {
+                f"{field}-cardinality": {
+                    "cardinality": {
+                        "field": field
+                    }
+                },
+                f"{field}-value_count": {
+                    "value_count": {
+                        "field": field
+                    }
+                },
+                f"{field}-top-ten": {
+                    "terms": {
+                        "field": field,
+                        "size": 10
+                    }
+                }
+            }
+
+        response = elastic.conn.search(
+            index=index, body=query)
+        
+        # If the response is successful
+        if response["timed_out"] == False:
+            # Get the aggregations
+            aggregations = response["aggregations"]
+            # Get the cardinality
+            cardinality = aggregations[f"{field}-cardinality"]["value"]
+            # Get the value count
+            value_count = aggregations[f"{field}-value_count"]["value"]
+            # Get the top ten values
+            top_ten = aggregations[f"{field}-top-ten"]["buckets"]
+            for item in top_ten:
+                item['key'] = str(item['key'])
+            # Create a dictionary to store the field metrics
+            field_metrics = {
+                "field": field,
+                "cardinality": cardinality,
+                "value_count": value_count,
+                "top_ten": top_ten
+            }
+
+            is_signficant = False
+
+            for item in field_metrics['top_ten']:
+                pct = round(item['doc_count']/field_metrics['value_count']*100, 2)
+                item['pct'] = pct
+                if item['pct'] > 15.00:
+                    is_signficant = True
+
+            if not is_signficant:
+                return
+
+            # If the value_count is greater than 1000
+            if field_metrics['value_count'] >= 1:
+                return field_metrics
+            
+    
+    def _field_metrics(self, detection):
+
+        # Get the input for the detection
+        _input = self.inputs[detection.source['uuid']]
+        credential = self.credentials[_input['credential']]
+        elastic = Elastic(_input['config'],
+                          _input['field_mapping'], credential)
+        
+        # Get the fields from a single hit of the event
+        query = {
+            "query": {
+                "bool": {
+                    "must": [
+                        {
+                            "range": {
+                                "@timestamp": {
+                                    "gte": "now-1d"
+                                }
+                            }
+                        },
+                        {
+                            "query_string": {
+                                "query": detection.query['query']
+                            }
+                        }
+                    ]
+                }
+            },
+            "size": 1
+        }
+
+        query = self.build_exceptions(query, detection)
+
+        response = elastic.conn.search(
+            index=_input['config']['index'], body=query)
+        
+        # If the response has hits extract the events fields by flattening the dictionary keys
+        # with a . separator
+        if response['hits']['total']['value'] > 0:
+            event = IndexedDict(response['hits']['hits'][0]['_source'])
+            possible_fields = event.keys()
+
+        # Discover the fields we need to get metrics for
+        fields = []
+        data = elastic.conn.field_caps(index=_input['config']['index'], fields=','.join(possible_fields))
+        for field in data["fields"]:
+            field_data = data["fields"][field]
+            for field_type in field_data:
+                if field_data[field_type]["aggregatable"]:
+                    fields.append(field)
+
+        # Get the metrics for each field
+        metrics = []
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            futures = [executor.submit(self._get_field_metrics, elastic, _input['config']['index'], query, field) for field in fields]
+
+            for future in futures:
+                if future.result() != None:
+                    metrics.append(future.result())
+
+        return metrics
 
     def _assess_rule(self, rule):
         '''
@@ -634,6 +769,9 @@ class Detector(Process):
 
                 if detection.warnings != None and isinstance(detection.warnings, list):
                     update_payload['warnings'] = detection.warnings
+
+            # Do the field metrics assessment
+            update_payload['field_metrics'] = self._field_metrics(detection)
 
             self.agent.update_detection(detection.uuid, payload=update_payload)
 
