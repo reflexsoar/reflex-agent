@@ -31,10 +31,11 @@ def event_severity(sev):
     severity of an event
     '''
     severities = [
-        {'low': 0},
-        {'medium': 1},
-        {'high': 2},
-        {'critical': 3}
+        {'informational': 0},
+        {'low': 1},
+        {'medium': 2},
+        {'high': 3},
+        {'critical': 4}
     ]
     return severities[sev]
 
@@ -238,7 +239,7 @@ class Agent(object):
         self.access_token = os.getenv('ACCESS_TOKEN')
         self.console_url = os.getenv('CONSOLE_URL')
         self.ip = self.agent_ip()
-        self.VERSION_NUMBER = "2023.10.16-rc0"
+        self.VERSION_NUMBER = "2023.10.20-rc0"
 
         log_levels = {
             'DEBUG': logging.DEBUG,
