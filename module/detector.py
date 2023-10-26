@@ -550,12 +550,15 @@ class Detector(Process):
 
         query = self.build_exceptions(query, detection)
 
+        print(query)
+
         response = elastic.conn.search(
             index=_input['config']['index'], body=query)
         
         # If the response has hits extract the events fields by flattening the dictionary keys
         # with a . separator
         possible_fields = []
+        print(response['hits']['total']['value'])
         if response['hits']['total']['value'] > 0:
             event = IndexedDict(response['hits']['hits'][0]['_source'])
             possible_fields = event.keys()
