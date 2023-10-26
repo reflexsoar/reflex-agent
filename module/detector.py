@@ -558,7 +558,7 @@ class Detector(Process):
         # If the response has hits extract the events fields by flattening the dictionary keys
         # with a . separator
         possible_fields = []
-        print(response['hits']['total']['value'])
+        print(response)
         if response['hits']['total']['value'] > 0:
             event = IndexedDict(response['hits']['hits'][0]['_source'])
             possible_fields = event.keys()
