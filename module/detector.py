@@ -550,15 +550,12 @@ class Detector(Process):
 
         query = self.build_exceptions(query, detection)
 
-        print(query)
-
         response = elastic.conn.search(
             index=_input['config']['index'], body=query)
         
         # If the response has hits extract the events fields by flattening the dictionary keys
         # with a . separator
         possible_fields = []
-        print(response)
         if response['hits']['total']['value'] > 0:
             event = IndexedDict(response['hits']['hits'][0]['_source'])
             possible_fields = event.keys()
@@ -776,6 +773,7 @@ class Detector(Process):
 
             # Do the field metrics assessment
             update_payload['field_metrics'] = self._field_metrics(detection)
+            print(update_payload)
 
             self.agent.update_detection(detection.uuid, payload=update_payload)
 
