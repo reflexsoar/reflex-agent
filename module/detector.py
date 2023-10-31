@@ -569,6 +569,8 @@ class Detector(Process):
             event = IndexedDict(response['hits']['hits'][0]['_source'])
             possible_fields = event.keys()
 
+        self.logger.info(f"Possible fields: {possible_fields}")
+
         # Discover the fields we need to get metrics for
         metrics = []
         fields = []
@@ -581,7 +583,7 @@ class Detector(Process):
                         self.logger.info(field, field_data[field_type]["aggregatable"])
                         fields.append(field)
 
-            self.logger.info(fields)
+            self.logger.info(f"Fields: {fields}")
 
             # Get the metrics for each field            
             with ThreadPoolExecutor(max_workers=10) as executor:
