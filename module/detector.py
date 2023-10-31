@@ -561,22 +561,28 @@ class Detector(Process):
             possible_fields = event.keys()
 
         # Discover the fields we need to get metrics for
-        fields = []
-        data = elastic.conn.field_caps(index=_input['config']['index'], fields=','.join(possible_fields))
-        for field in data["fields"]:
-            field_data = data["fields"][field]
-            for field_type in field_data:
-                if field_data[field_type]["aggregatable"]:
-                    fields.append(field)
-
-        # Get the metrics for each field
         metrics = []
-        with ThreadPoolExecutor(max_workers=10) as executor:
-            futures = [executor.submit(self._get_field_metrics, elastic, _input['config']['index'], query, field) for field in fields]
+        fields = []
+        if len(possible_fields) > 0:
+            data = elastic.conn.field_caps(index=_input['config']['index'], fields=','.join(possible_fields))
+            for field in data["fields"]:
+                field_data = data["fields"][field]
+                for field_type in field_data:
+                    if field_data[field_type]["aggregatable"]:
+                        fields.append(field)
 
-            for future in futures:
-                if future.result() != None:
-                    metrics.append(future.result())
+            # Get the metrics for each field            
+            with ThreadPoolExecutor(max_workers=10) as executor:
+                futures = [executor.submit(self._get_field_metrics, elastic, _input['config']['index'], query, field) for field in fields]
+
+                for future in futures:
+                    try:
+                        if future.result() != None:
+                        
+                            metrics.append(future.result())
+                    except Exception as e:
+                        self.logger.error(f"Error getting field metrics: {e}")
+                        continue
 
         return metrics
 
@@ -773,7 +779,6 @@ class Detector(Process):
 
             # Do the field metrics assessment
             update_payload['field_metrics'] = self._field_metrics(detection)
-            print(update_payload)
 
             self.agent.update_detection(detection.uuid, payload=update_payload)
 
