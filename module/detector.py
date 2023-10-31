@@ -551,11 +551,16 @@ class Detector(Process):
         query = self.build_exceptions(query, detection)
 
         self.logger.info(query)
+        self.logger.info(_input['config']['index'])
 
-        response = elastic.conn.search(
-            index=_input['config']['index'], body=query)
+        try:
+            response = elastic.conn.search(
+                index=_input['config']['index'], body=query)
         
-        self.logger.info(response)
+            self.logger.info(response)
+        except Exception as e:
+            self.logger.error(f"Error performing primary field metrics search: {e}")
+            return
         
         # If the response has hits extract the events fields by flattening the dictionary keys
         # with a . separator
