@@ -575,7 +575,7 @@ class Detector(Process):
         metrics = []
         fields = []
         if len(possible_fields) > 0:
-            data = elastic.conn.field_caps(index=_input['config']['index'], fields=','.join(possible_fields))
+            data = elastic.conn.field_caps(index=_input['config']['index'], fields=possible_fields)
             self.logger.info(f"Field Caps: {data}")
             for field in data["fields"]:
                 field_data = data["fields"][field]
