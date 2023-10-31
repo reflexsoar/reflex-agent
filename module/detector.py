@@ -569,7 +569,10 @@ class Detector(Process):
                 field_data = data["fields"][field]
                 for field_type in field_data:
                     if field_data[field_type]["aggregatable"]:
+                        print(field, field_data[field_type]["aggregatable"])
                         fields.append(field)
+
+            print(fields)
 
             # Get the metrics for each field            
             with ThreadPoolExecutor(max_workers=10) as executor:
@@ -577,8 +580,7 @@ class Detector(Process):
 
                 for future in futures:
                     try:
-                        if future.result() != None:
-                        
+                        if future.result() != None:                        
                             metrics.append(future.result())
                     except Exception as e:
                         self.logger.error(f"Error getting field metrics: {e}")
