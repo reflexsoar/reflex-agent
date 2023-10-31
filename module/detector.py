@@ -553,7 +553,7 @@ class Detector(Process):
         response = elastic.conn.search(
             index=_input['config']['index'], body=query)
         
-        self.logger(response)
+        self.logger.info(response)
         
         # If the response has hits extract the events fields by flattening the dictionary keys
         # with a . separator
@@ -571,10 +571,10 @@ class Detector(Process):
                 field_data = data["fields"][field]
                 for field_type in field_data:
                     if field_data[field_type]["aggregatable"]:
-                        self.logger(field, field_data[field_type]["aggregatable"])
+                        self.logger.info(field, field_data[field_type]["aggregatable"])
                         fields.append(field)
 
-            self.logger(fields)
+            self.logger.info(fields)
 
             # Get the metrics for each field            
             with ThreadPoolExecutor(max_workers=10) as executor:
