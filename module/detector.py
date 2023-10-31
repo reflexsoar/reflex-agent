@@ -550,6 +550,8 @@ class Detector(Process):
 
         query = self.build_exceptions(query, detection)
 
+        self.logger.info(query)
+
         response = elastic.conn.search(
             index=_input['config']['index'], body=query)
         
