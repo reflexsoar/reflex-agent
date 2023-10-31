@@ -582,7 +582,7 @@ class Detector(Process):
                 self.logger.info(f"Field: {field} - {field_data}")
                 for field_type in field_data:
                     if field_data[field_type]["aggregatable"]:
-                        self.logger.info(field, field_data[field_type]["aggregatable"])
+                        self.logger.info(f"Field: {field}, Field Data: {field_data[field_type]['aggregatable']}")
                         fields.append(field)
 
             self.logger.info(f"Fields: {fields}")
