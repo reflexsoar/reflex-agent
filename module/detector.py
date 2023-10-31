@@ -553,6 +553,8 @@ class Detector(Process):
         response = elastic.conn.search(
             index=_input['config']['index'], body=query)
         
+        print(response)
+        
         # If the response has hits extract the events fields by flattening the dictionary keys
         # with a . separator
         possible_fields = []
