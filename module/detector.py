@@ -578,6 +578,7 @@ class Detector(Process):
             data = elastic.conn.field_caps(index=_input['config']['index'], fields=','.join(possible_fields))
             for field in data["fields"]:
                 field_data = data["fields"][field]
+                self.logger.info(f"Field: {field} - {field_data}")
                 for field_type in field_data:
                     if field_data[field_type]["aggregatable"]:
                         self.logger.info(field, field_data[field_type]["aggregatable"])
