@@ -550,34 +550,43 @@ class Detector(Process):
 
         query = self.build_exceptions(query, detection)
 
-        response = elastic.conn.search(
-            index=_input['config']['index'], body=query)
+        try:
+            response = elastic.conn.search(
+                index=_input['config']['index'], body=query)
+        except Exception as e:
+            self.logger.error(f"Error performing primary field metrics search: {e}")
+            return
         
         # If the response has hits extract the events fields by flattening the dictionary keys
         # with a . separator
-        possible_fields = []
-        print(response['hits']['total']['value'])
-        if response['hits']['total']['value'] > 0:
-            event = IndexedDict(response['hits']['hits'][0]['_source'])
-            possible_fields = event.keys()
-
-        # Discover the fields we need to get metrics for
-        fields = []
-        data = elastic.conn.field_caps(index=_input['config']['index'], fields=','.join(possible_fields))
-        for field in data["fields"]:
-            field_data = data["fields"][field]
-            for field_type in field_data:
-                if field_data[field_type]["aggregatable"]:
-                    fields.append(field)
-
-        # Get the metrics for each field
+        
         metrics = []
-        with ThreadPoolExecutor(max_workers=10) as executor:
-            futures = [executor.submit(self._get_field_metrics, elastic, _input['config']['index'], query, field) for field in fields]
+        if response:
+            possible_fields = []
+            fields = []
+            if response['hits']['total']['value'] > 0:
+                event = IndexedDict(response['hits']['hits'][0]['_source'])
+                possible_fields = event.keys()
 
-            for future in futures:
-                if future.result() != None:
-                    metrics.append(future.result())
+            # Discover the fields we need to get metrics for
+            if len(possible_fields) > 0:
+                data = elastic.conn.field_caps(index=_input['config']['index'], fields=list(possible_fields))
+                for field in data["fields"]:
+                    field_data = data["fields"][field]
+                    for field_type in field_data:
+                        if field_data[field_type]["aggregatable"]:
+                            fields.append(field)
+
+                # Get the metrics for each field            
+                with ThreadPoolExecutor(max_workers=10) as executor:
+                    futures = [executor.submit(self._get_field_metrics, elastic, _input['config']['index'], query, field) for field in fields]
+
+                    for future in futures:
+                        try:
+                            if future.result() != None:                        
+                                metrics.append(future.result())
+                        except Exception as e:
+                            continue
 
         return metrics
 
