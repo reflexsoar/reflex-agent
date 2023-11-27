@@ -178,7 +178,6 @@ if __name__ == "__main__":
                             agent.role_health[role] = 0
                             role_processes[role] = None
 
-
                     if 'poller' in agent.config['roles']:
                         for i in agent.config['inputs']:
 
@@ -241,8 +240,8 @@ if __name__ == "__main__":
             time.sleep(agent.health_check_interval)
         except Exception as e:
             exception_type, exception_object, exception_traceback = sys.exc_info()
-            print("Exception type:", exception_type)
-            print("Exception object:", exception_object)
-            print("Exception traceback:", exception_traceback)
-            print("Exception line number:", exception_traceback.tb_lineno)
+            logger.error("Exception type:", exception_type)
+            logger.error("Exception object:", exception_object)
+            logger.error("Exception traceback:", exception_traceback)
+            logger.error("Exception line number:", exception_traceback.tb_lineno)
             logger.error('Agent failed with exception: {}'.format(e))
