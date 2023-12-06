@@ -1016,6 +1016,22 @@ class Detector(Process):
 
         data_sources.extend(detection.source_monitor_config['data_sources'])
 
+        # If the rule calls for auto discovery of data streams get the list of 
+        # data streams, filtering out system managed data streams and extend
+        # the list of data sources
+        if 'autodiscover_data_streams' in detection.source_monitor_config:
+            if detection.source_monitor_config['autodiscover_data_streams'] is True:
+                _data_streams = []
+                try:
+                    search = elastic.conn.get_data_streams()
+                    for stream in search['data_streams']:
+                        if stream['system'] is False:
+                            _data_streams.append(stream['name'])
+                except Exception as e:
+                    self.logger.error(
+                        f"Error auto discovering data streams for rule {detection.name}: {e}")
+                data_sources.extend(_data_streams)
+
         # If the detection has any data sources in intel lists add them to the list
         if len(detection.source_monitor_config['source_lists']) > 0:
             for source_list in detection.source_monitor_config['source_lists']:
