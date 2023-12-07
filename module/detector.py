@@ -1023,7 +1023,7 @@ class Detector(Process):
             if detection.source_monitor_config['autodiscover_data_streams'] is True:
                 _data_streams = []
                 try:
-                    search = elastic.conn.get_data_streams()
+                    search = elastic.conn.get_data_stream()
                     for stream in search['data_streams']:
                         if stream['system'] is False:
                             _data_streams.append(stream['name'])
