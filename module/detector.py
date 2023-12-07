@@ -1025,7 +1025,9 @@ class Detector(Process):
                 try:
                     search = elastic.conn.indices.get_data_stream()
                     for stream in search['data_streams']:
-                        if stream['system'] is False:
+                        if 'system' not in stream:
+                            _data_streams.append(stream['name'])
+                        elif stream['system'] is False:
                             _data_streams.append(stream['name'])
                 except Exception as e:
                     self.logger.error(
