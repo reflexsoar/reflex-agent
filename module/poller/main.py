@@ -23,7 +23,8 @@ class Poller(Process):
                 'concurrent_inputs': 5,
                 'graceful_exit': False,
                 'max_input_attempts': 3,
-                'signature_cache_ttl': 3600
+                'signature_cache_ttl': 3600,
+                'ignore_signature_cache': False
             }
 
         self.running = True
