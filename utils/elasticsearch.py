@@ -229,9 +229,10 @@ class Elastic(Process):
             event.tags = list(set(event.tags))
 
             if time_to_detect:
-                now = datetime.datetime.utcnow()
-                logger.info(f"Time to Detect: {now} - {event.original_date}")
+                
                 if hasattr(event, 'original_date'):
+                    now = datetime.datetime.utcnow()
+                    logger.info(f"Time to Detect: {now} - {event.original_date}")
                     try:
                         original_date = parser.parse(event.original_date)
                     except ValueError:
