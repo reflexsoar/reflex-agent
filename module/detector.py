@@ -2165,7 +2165,7 @@ class Detector(Process):
                                 docs += elastic.parse_events(
                                     res['hits']['hits'], title=detection.name, signature_values=[
                                         detection.detection_id], risk_score=detection.risk_score,
-                                    time_to_detect=True)
+                                    time_to_detect=False)
 
                             scroll_size = len(res['hits']['hits'])
 
