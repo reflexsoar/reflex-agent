@@ -237,7 +237,12 @@ class Elastic(Process):
                         original_date = parser.parse(event.original_date)
                     except ValueError:
                         original_date = datetime.datetime.utcnow()
-                    event.time_to_detect = (now - original_date).total_seconds()
+
+                    # Fix for original date being timezone aware
+                    if original_date.tzinfo is not None:
+                        event.time_to_detect = (now.astimezone(original_date.tzinfo) - original_date).total_seconds()
+                    else:
+                        event.time_to_detect = (now - original_date).total_seconds()
 
             events.append(event)
         
