@@ -1019,9 +1019,10 @@ class Detector(Process):
         # If the rule calls for auto discovery of data streams get the list of 
         # data streams, filtering out system managed data streams and extend
         # the list of data sources
+        _data_streams = []
         if 'autodiscover_data_streams' in detection.source_monitor_config:
             if detection.source_monitor_config['autodiscover_data_streams'] is True:
-                _data_streams = []
+                
                 try:
                     search = elastic.conn.indices.get_data_stream()
                     for stream in search['data_streams']:
@@ -1032,7 +1033,40 @@ class Detector(Process):
                 except Exception as e:
                     self.logger.error(
                         f"Error auto discovering data streams for rule {detection.name}: {e}")
-                data_sources.extend(_data_streams)
+                    
+            # If we have a time filter on our datastream discovery, check each datastreams
+            # maximum_timestamp to see if it is within the time filter
+            if 'ignore_data_streams_older_than_days' in detection.source_monitor_config:
+                if detection.source_monitor_config['ignore_data_streams_older_than_days'] > 0:
+
+                    _data_stream_stats = {}
+                    _days = detection.source_monitor_config['ignore_data_streams_older_than_days']
+
+                    try:
+                        # Fetch the data stream stats
+                        stats_search = elastic.conn.indices.data_streams_stats()
+
+                        # Build a lookup table of data stream names and their maximum_timestamp
+                        for stream in stats_search['data_streams']:
+                            _data_stream_stats[stream['name']] = stream['maximum_timestamp']
+
+                            # If the data stream is older than the ignore_data_streams_older_than_days
+                            # property, remove it from the list of data streams to monitor
+                            days_ago = datetime.datetime.utcnow() - datetime.timedelta(days=_days)
+                            days_ago_timestamp = int(days_ago.timestamp()*1000)
+                            if stream['maximum_timestamp'] < days_ago_timestamp:
+                                _data_streams.remove(stream['name'])
+
+                    except Exception as e:
+                        # If we can't get the data stream stats, we can not filter out the data streams
+                        # so we prevent auto discovering data streams by _data_streams = []
+                        _data_streams = []
+                        self.logger.error(
+                            f"Error fetching data stream stats for rule {detection.name}: {e}")
+
+        # Append the data streams to the list of data sources
+        if len(_data_streams) > 0 :
+            data_sources.extend(_data_streams)
 
         # If the detection has any data sources in intel lists add them to the list
         if len(detection.source_monitor_config['source_lists']) > 0:
@@ -1976,6 +2010,7 @@ class Detector(Process):
 
                 signature_fields = []
                 field_mapping = []
+                tag_fields = []
 
                 """Call the API to fetch the expected field settings for this detection which includes
                 the fields to extract as observables and the fields to use as signature fields
@@ -1991,6 +2026,11 @@ class Detector(Process):
                             signature_fields = field_settings['signature_fields']
                         if 'fields' in field_settings and len(field_settings['fields']) > 0:
                             field_mapping = field_settings
+
+                        # Get the tag fields from the field settings
+                        if 'tag_fields' in field_settings and len(field_settings['tag_fields']) > 0:
+                            tag_fields = field_settings['tag_fields']
+
                     except:
                         self.logger.error(
                             f"Failed to parse field settings for {detection.name}")
@@ -2014,6 +2054,10 @@ class Detector(Process):
                     signature_fields = _input['config']['signature_fields']
                 if len(field_mapping) == 0:
                     field_mapping = _input['config']['fields']
+                
+                # If the detection calls for tag fields use them instead of the input tag fields
+                if len(tag_fields) > 0:
+                    _input['config']['tag_fields'] = tag_fields
 
                 # Get the credential or report an error if the agent doesn't know it
                 if _input['credential'] in self.credentials:
