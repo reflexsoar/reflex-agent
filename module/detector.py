@@ -2010,6 +2010,7 @@ class Detector(Process):
 
                 signature_fields = []
                 field_mapping = []
+                tag_fields = []
 
                 """Call the API to fetch the expected field settings for this detection which includes
                 the fields to extract as observables and the fields to use as signature fields
@@ -2025,6 +2026,11 @@ class Detector(Process):
                             signature_fields = field_settings['signature_fields']
                         if 'fields' in field_settings and len(field_settings['fields']) > 0:
                             field_mapping = field_settings
+
+                        # Get the tag fields from the field settings
+                        if 'tag_fields' in field_settings and len(field_settings['tag_fields']) > 0:
+                            tag_fields = field_settings['tag_fields']
+
                     except:
                         self.logger.error(
                             f"Failed to parse field settings for {detection.name}")
@@ -2048,6 +2054,10 @@ class Detector(Process):
                     signature_fields = _input['config']['signature_fields']
                 if len(field_mapping) == 0:
                     field_mapping = _input['config']['fields']
+                
+                # If the detection calls for tag fields use them instead of the input tag fields
+                if len(tag_fields) > 0:
+                    _input['config']['tag_fields'] = tag_fields
 
                 # Get the credential or report an error if the agent doesn't know it
                 if _input['credential'] in self.credentials:
