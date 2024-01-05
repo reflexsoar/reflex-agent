@@ -215,14 +215,13 @@ class Detector(Process):
     
     def _op_type_create(self, events):
         for event in events:
-            print(event)
             event['_op_type'] = 'create'
 
             # Strip this field, it can't be indexed
-            if "_id" in event:
-                del event['_id']
+            if "_id" in event['_source']:
+                del event['_source']['_id']
 
-        return events
+            yield event
 
     def writeback(self, conn, events):
         # If the environment variable for writeback_index is set, write the results to the index
@@ -230,7 +229,9 @@ class Detector(Process):
         if os.getenv('REFLEX_DETECTIONS_WRITEBACK_INDEX') != None:
             self.logger.info(
                 f"Writing {len(events)} events to {os.getenv('REFLEX_DETECTIONS_WRITEBACK_INDEX')}")
-            events = self._op_type_create(events)
+            
+            events = [e for e in self._op_type_create(events)]
+
             bulk(conn, events, index=os.getenv(
                 'REFLEX_DETECTIONS_WRITEBACK_INDEX'))
 
