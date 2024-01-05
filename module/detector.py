@@ -215,6 +215,7 @@ class Detector(Process):
     
     def _op_type_create(self, events):
         for event in events:
+            print(event)
             event['_op_type'] = 'create'
 
             # Strip this field, it can't be indexed
