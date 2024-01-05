@@ -217,9 +217,12 @@ class Detector(Process):
         for event in events:
 
             if isinstance(event, ReflexEvent):
-                event.__dict__['_op_type'] = 'create'
+                setattr(event, '_op_type', 'create')
             else:
                 event['_op_type'] = 'create'
+                # Strip this field, it can't be indexed
+                if "_id" in event['_source']:
+                    del event['_source']['_id']
 
             if additional_fields is not None:
                 for field in additional_fields:
@@ -229,10 +232,6 @@ class Detector(Process):
                     else:
                         if field not in event['_source']:
                             event['_source'][field] = additional_fields[field]
-
-            # Strip this field, it can't be indexed
-            if "_id" in event['_source']:
-                del event['_source']['_id']
 
             yield event
 
