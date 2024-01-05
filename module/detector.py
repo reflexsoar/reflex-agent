@@ -1087,8 +1087,17 @@ class Detector(Process):
         # If the detection has any data sources to exclude remove them from the list
         if len(detection.source_monitor_config['excluded_sources']) > 0:
             for excluded_source in detection.source_monitor_config['excluded_sources']:
-                if excluded_source in data_sources:
-                    data_sources.remove(excluded_source)
+
+                if "*" in excluded_source:
+                    _match_pattern = excluded_source.replace("*", ".*")
+                    _match_pattern = f"^{_match_pattern}$"
+                    _match_pattern = re.compile(_match_pattern)
+                    for source in data_sources:
+                        if _match_pattern.match(source):
+                            data_sources.remove(source)
+                else:
+                    if excluded_source in data_sources:
+                        data_sources.remove(excluded_source)
 
         # If the detection has any data sources to exclude in intel lists remove them from the list
         if len(detection.source_monitor_config['excluded_source_lists']) > 0:
@@ -1201,11 +1210,6 @@ class Detector(Process):
                         '@timestamp': datetime.datetime.utcnow().isoformat(),
                         'data_source': data_source
                     }})
-                
-        if len(docs) > 0:
-            # Write the docs to Elasticsearch if there are any
-            # and the writeback is enabled
-            self.writeback(elastic.conn, docs)
 
         docs = elastic.parse_events(docs, title=detection.name, signature_values=[
                                     detection.detection_id], risk_score=detection.risk_score)
@@ -1237,6 +1241,10 @@ class Detector(Process):
             update_payload['total_hits'] = len(docs)
 
         if len(docs) > 0:
+
+            # Write the docs to Elasticsearch if there are any
+            # and the writeback is enabled
+            self.writeback(elastic.conn, docs)
 
             # If the detection has suppression_max_events set to something other than 0
             # suppress the events
