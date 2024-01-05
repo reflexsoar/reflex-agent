@@ -216,6 +216,11 @@ class Detector(Process):
     def _op_type_create(self, events):
         for event in events:
             event['_op_type'] = 'create'
+
+            # Strip this field, it can't be indexed
+            if "_id" in event:
+                del event['_id']
+
         return events
 
     def writeback(self, conn, events):
