@@ -226,7 +226,7 @@ class Detector(Process):
                 f"Writing {len(events)} events to {os.getenv('REFLEX_DETECTIONS_WRITEBACK_INDEX')}")
             events = self._op_type_create(events)
             bulk(conn, events, index=os.getenv(
-                'REFLEX_DETECTIONS_WRITEBACK_INDEX'), )
+                'REFLEX_DETECTIONS_WRITEBACK_INDEX'))
 
     @property
     def drop(self):
@@ -1194,6 +1194,11 @@ class Detector(Process):
                         '@timestamp': datetime.datetime.utcnow().isoformat(),
                         'data_source': data_source
                     }})
+                
+        if len(docs) > 0:
+            # Write the docs to Elasticsearch if there are any
+            # and the writeback is enabled
+            self.writeback(elastic.conn, docs)
 
         docs = elastic.parse_events(docs, title=detection.name, signature_values=[
                                     detection.detection_id], risk_score=detection.risk_score)
@@ -1225,10 +1230,6 @@ class Detector(Process):
             update_payload['total_hits'] = len(docs)
 
         if len(docs) > 0:
-
-            # Write the docs to Elasticsearch if there are any
-            # and the writeback is enabled
-            self.writeback(elastic.conn, docs)
 
             # If the detection has suppression_max_events set to something other than 0
             # suppress the events
