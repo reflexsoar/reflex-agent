@@ -216,13 +216,10 @@ class Detector(Process):
     def writeback(self, conn, events):
         # If the environment variable for writeback_index is set, write the results to the index
         # using the bulk helper and reusing the elastic.conn connection object
-        events = [
-            {'test': 'test'}
-        ]
         if os.getenv('REFLEX_DETECTIONS_WRITEBACK_INDEX') != None:
             self.logger.info(
                 f"Writing {len(events)} events to {os.getenv('REFLEX_DETECTIONS_WRITEBACK_INDEX')}")
-            bulk(conn, events, index=os.getenv(
+            bulk(conn, events, actions=['create'], index=os.getenv(
                 'REFLEX_DETECTIONS_WRITEBACK_INDEX'))
 
     @property
