@@ -212,6 +212,11 @@ class Detector(Process):
             _events.extend(grouped_events[signature])
 
         return _events
+    
+    def _op_type_create(self, events):
+        for event in events:
+            event['_op_type'] = 'create'
+        return events
 
     def writeback(self, conn, events):
         # If the environment variable for writeback_index is set, write the results to the index
@@ -219,8 +224,9 @@ class Detector(Process):
         if os.getenv('REFLEX_DETECTIONS_WRITEBACK_INDEX') != None:
             self.logger.info(
                 f"Writing {len(events)} events to {os.getenv('REFLEX_DETECTIONS_WRITEBACK_INDEX')}")
-            bulk(conn, events, actions=['create'], index=os.getenv(
-                'REFLEX_DETECTIONS_WRITEBACK_INDEX'))
+            events = self._op_type_create(events)
+            bulk(conn, events, index=os.getenv(
+                'REFLEX_DETECTIONS_WRITEBACK_INDEX'), )
 
     @property
     def drop(self):
