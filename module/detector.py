@@ -16,7 +16,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from opensearchpy import ConnectionTimeout, NotFoundError
 from opensearchpy.helpers import bulk
-from utils.base import JSONSerializable
+from utils.base import JSONSerializable, Event as ReflexEvent
 from utils.elasticsearch import Elastic
 from utils.indexed_dict import IndexedDict
 from .threshold import ThresholdRule
@@ -213,13 +213,22 @@ class Detector(Process):
 
         return _events
     
-    def _op_type_create(self, events):
+    def enrich_event(self, events, additional_fields: dict = None):
         for event in events:
 
-            if isinstance(event, Event):
+            if isinstance(event, ReflexEvent):
                 event.__dict__['_op_type'] = 'create'
             else:
                 event['_op_type'] = 'create'
+
+            if additional_fields is not None:
+                for field in additional_fields:
+                    if isinstance(event, ReflexEvent):
+                        if hasattr(event, field) is False:
+                            setattr(event, field, additional_fields[field])
+                    else:
+                        if field not in event['_source']:
+                            event['_source'][field] = additional_fields[field]
 
             # Strip this field, it can't be indexed
             if "_id" in event['_source']:
@@ -227,14 +236,14 @@ class Detector(Process):
 
             yield event
 
-    def writeback(self, conn, events):
+    def writeback(self, conn, events, additional_fields: dict = None):
         # If the environment variable for writeback_index is set, write the results to the index
         # using the bulk helper and reusing the elastic.conn connection object
         if os.getenv('REFLEX_DETECTIONS_WRITEBACK_INDEX') != None:
             self.logger.info(
                 f"Writing {len(events)} events to {os.getenv('REFLEX_DETECTIONS_WRITEBACK_INDEX')}")
             
-            events = [e for e in self._op_type_create(events)]
+            events = [e for e in self.enrich_event(events, additional_fields=additional_fields)]
 
             bulk(conn, events, index=os.getenv(
                 'REFLEX_DETECTIONS_WRITEBACK_INDEX'))
@@ -1248,7 +1257,15 @@ class Detector(Process):
 
             # Write the docs to Elasticsearch if there are any
             # and the writeback is enabled
-            self.writeback(elastic.conn, docs)
+
+            # Additional Fields
+            additonal_fields = {
+                'rule_name': detection.name,
+                'rule_query': detection.query['query'],
+                'rule_description': detection.description
+            }
+
+            self.writeback(elastic.conn, docs, additional_fields=additonal_fields)
 
             # If the detection has suppression_max_events set to something other than 0
             # suppress the events
