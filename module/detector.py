@@ -215,7 +215,11 @@ class Detector(Process):
     
     def _op_type_create(self, events):
         for event in events:
-            event['_op_type'] = 'create'
+
+            if isinstance(event, Event):
+                event.__dict__['_op_type'] = 'create'
+            else:
+                event['_op_type'] = 'create'
 
             # Strip this field, it can't be indexed
             if "_id" in event['_source']:
