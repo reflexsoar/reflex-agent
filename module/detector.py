@@ -233,7 +233,10 @@ class Detector(Process):
                         if field not in event['_source']:
                             event['_source'][field] = additional_fields[field]
 
-            yield event
+            if isinstance(event, ReflexEvent):
+                yield event.as_dict()
+            else:
+                yield event
 
     def writeback(self, conn, events, additional_fields: dict = None):
         # If the environment variable for writeback_index is set, write the results to the index
