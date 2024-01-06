@@ -191,6 +191,12 @@ class Event(JSONSerializable):
             else:
                 setattr(self, k, data[k])
 
+    def as_dict(self):
+        '''
+        Returns the Event object as a dictionary
+        '''
+
+        return self.__dict__
 
     def __repr__(self):
         return "<Event reference={}, title={}, signature={}>".format(
