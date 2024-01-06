@@ -214,12 +214,16 @@ class Detector(Process):
         return _events
     
     def enrich_event(self, events, additional_fields: dict = None):
+        ''' Adds additional fields expected under certain writeback conditions
+        '''
         for event in events:
 
             if isinstance(event, ReflexEvent):
                 setattr(event, '_op_type', 'create')
+                setattr(event, '@timestamp', datetime.datetime.utcnow())
             else:
                 event['_op_type'] = 'create'
+                event['@timestamp'] = datetime.datetime.utcnow()
                 # Strip this field, it can't be indexed
                 if "_id" in event['_source']:
                     del event['_source']['_id']
