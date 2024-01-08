@@ -1108,6 +1108,7 @@ class Detector(Process):
             for excluded_source in detection.source_monitor_config['excluded_sources']:
 
                 if "*" in excluded_source:
+                    _match_pattern = excluded_source.replace(".", "\.")
                     _match_pattern = excluded_source.replace("*", ".*")
                     _match_pattern = f"^{_match_pattern}$"
                     _match_pattern = re.compile(_match_pattern)
