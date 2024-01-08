@@ -1268,7 +1268,8 @@ class Detector(Process):
             additonal_fields = {
                 'rule_name': detection.name,
                 'rule_query': detection.query['query'],
-                'rule_description': detection.description
+                'rule_description': detection.description,
+                'organization': detection.organization
             }
 
             self.writeback(elastic.conn, docs, additional_fields=additonal_fields)
