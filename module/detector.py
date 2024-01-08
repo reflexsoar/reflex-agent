@@ -220,10 +220,10 @@ class Detector(Process):
 
             if isinstance(event, ReflexEvent):
                 setattr(event, '_op_type', 'create')
-                setattr(event, '@timestamp', datetime.datetime.utcnow())
+                setattr(event, '@timestamp', datetime.datetime.utcnow().isoformat())
             else:
                 event['_op_type'] = 'create'
-                event['@timestamp'] = datetime.datetime.utcnow()
+                event['@timestamp'] = datetime.datetime.utcnow().isoformat()
                 # Strip this field, it can't be indexed
                 if "_id" in event['_source']:
                     del event['_source']['_id']
