@@ -19,6 +19,7 @@ ldap3 = "*"
 python-dateutil = "*"
 loguru = "*"
 pytz = "*"
+diskcache = "*"
 
 [requires]
 python_version = "3.8"

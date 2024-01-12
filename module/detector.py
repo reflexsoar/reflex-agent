@@ -13,6 +13,7 @@ from dateutil import parser as date_parser
 from multiprocessing import Process, Event
 from multiprocessing.pool import ThreadPool
 from concurrent.futures import ThreadPoolExecutor
+from diskcache import Cache
 
 from opensearchpy import ConnectionTimeout, NotFoundError
 from opensearchpy.helpers import bulk
@@ -184,6 +185,7 @@ class Detector(Process):
         self.detection_rules = []
         self.should_exit = Event()
         self.new_term_state_table = {}
+        self.field_setting_cache = Cache('field_settings')
 
     def suppress_events(self, detection, events):
         '''
@@ -849,7 +851,7 @@ class Detector(Process):
 
         # Fetch the detections from the API
         response = self.agent.call_mgmt_api(
-            f"detection?agent={self.agent.uuid}&active={active}")
+            f"detection?agent={self.agent.uuid}&active={active}&should_run=true")
         if response and response.status_code == 200:
             self.detection_rules = response.json()['detections']
             self.logger.info(f"Loaded {len(self.detection_rules)} detections")
@@ -2048,44 +2050,47 @@ class Detector(Process):
             if detection.should_run(catchup_period=self.config['catchup_period']):
                 input_uuid = detection.source['uuid']
 
-                # Grab the field settings for the detection so we can use them to build the query
-                # and parse the results
-                # TODO: This should be cached in the agent for a period of time
-                self.logger.info(
-                    f"Fetching field settings for {detection.name}")
-                response = self.agent.call_mgmt_api(
-                    f"detection/{detection.uuid}/field_settings")
+                field_settings = self.field_setting_cache.get(detection.uuid)
+
+                if field_settings is None:
+
+                    """Call the API to fetch the expected field settings for this detection which includes
+                    the fields to extract as observables and the fields to use as signature fields
+                    If the API call fails, skip the detection run entirely and log an error
+                    If the API call succeeds but the response is not valid JSON, skip the detection run
+                    If the result of the API call is empty signature fields or fields default to using the
+                    defaults from the input"""
+
+                    self.logger.info(
+                        f"Fetching field settings for {detection.name}")
+                    response = self.agent.call_mgmt_api(
+                        f"detection/{detection.uuid}/field_settings")
+                    if response and response.status_code == 200:
+                        field_settings = response.json()
+                        # Cache the settings for 30 minutes to avoid calling the API too often
+                        self.field_setting_cache.set(detection.uuid, field_settings, expire=30*60)
+                    else:
+                        self.logger.error(
+                            f"Failed to fetch field settings for {detection.name}")
+                        return
 
                 signature_fields = []
                 field_mapping = []
                 tag_fields = []
+                
+                try:
+                    if 'signature_fields' in field_settings and len(field_settings['signature_fields']) > 0:
+                        signature_fields = field_settings['signature_fields']
+                    if 'fields' in field_settings and len(field_settings['fields']) > 0:
+                        field_mapping = field_settings
 
-                """Call the API to fetch the expected field settings for this detection which includes
-                the fields to extract as observables and the fields to use as signature fields
-                If the API call fails, skip the detection run entirely and log an error
-                If the API call succeeds but the response is not valid JSON, skip the detection run
-                If the result of the API call is empty signature fields or fields default to using the
-                defaults from the input
-                """
-                if response and response.status_code == 200:
-                    try:
-                        field_settings = response.json()
-                        if 'signature_fields' in field_settings and len(field_settings['signature_fields']) > 0:
-                            signature_fields = field_settings['signature_fields']
-                        if 'fields' in field_settings and len(field_settings['fields']) > 0:
-                            field_mapping = field_settings
+                    # Get the tag fields from the field settings
+                    if 'tag_fields' in field_settings and len(field_settings['tag_fields']) > 0:
+                        tag_fields = field_settings['tag_fields']
 
-                        # Get the tag fields from the field settings
-                        if 'tag_fields' in field_settings and len(field_settings['tag_fields']) > 0:
-                            tag_fields = field_settings['tag_fields']
-
-                    except:
-                        self.logger.error(
-                            f"Failed to parse field settings for {detection.name}")
-                        return
-                else:
+                except:
                     self.logger.error(
-                        f"Failed to fetch field settings for {detection.name}")
+                        f"Failed to parse field settings for {detection.name}")
                     return
 
                 # Get the input or report an error if the agent doesn't know it
