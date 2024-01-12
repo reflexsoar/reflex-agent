@@ -191,6 +191,12 @@ class Event(JSONSerializable):
             else:
                 setattr(self, k, data[k])
 
+    def as_dict(self):
+        '''
+        Returns the Event object as a dictionary
+        '''
+
+        return self.__dict__
 
     def __repr__(self):
         return "<Event reference={}, title={}, signature={}>".format(
@@ -239,7 +245,7 @@ class Agent(object):
         self.access_token = os.getenv('ACCESS_TOKEN')
         self.console_url = os.getenv('CONSOLE_URL')
         self.ip = self.agent_ip()
-        self.VERSION_NUMBER = "2023.12.13-rc0"
+        self.VERSION_NUMBER = "2024.01.05-rc0"
 
         log_levels = {
             'DEBUG': logging.DEBUG,

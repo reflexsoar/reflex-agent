@@ -9,3 +9,5 @@ plugins/*.py
 .vscode/
 
 test_base_rule.py
+
+test.py
