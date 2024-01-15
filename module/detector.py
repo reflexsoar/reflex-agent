@@ -2084,7 +2084,7 @@ class Detector(Process):
                         return
 
                 signature_fields = []
-                field_mapping = []
+                field_mapping = {}
                 tag_fields = []
                 
                 try:
@@ -2093,7 +2093,7 @@ class Detector(Process):
 
                     try:
                         if 'fields' in field_settings and len(field_settings['fields']) > 0:
-                            field_mapping = field_settings
+                            field_mapping['fields'] = field_settings
                     except:
                         self.logger.error(
                             f"Failed to parse field settings for {detection.name}")
