@@ -860,7 +860,7 @@ class Detector(Process):
 
         # Fetch the detections from the API
         response = self.agent.call_mgmt_api(
-            f"detection?agent={self.agent.uuid}&active={active}&should_run=true")
+            f"detection?agent={self.agent.uuid}&active={active}&should_run=true&limit={self.config['concurrent_rules']}")
         if response and response.status_code == 200:
             self.detection_rules = response.json()['detections']
             self.logger.info(f"Loaded {len(self.detection_rules)} detections")
