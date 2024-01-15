@@ -98,51 +98,64 @@ class Elastic(Process):
         '''
         
         observables = []
-        for field in self.field_mapping['fields']:
+        try:
+            for field in self.field_mapping['fields']:
 
-            # Skip fields that don't have an associated data type
-            if field['data_type'] == 'none':
-                continue
+                # Skip fields that don't have an associated data type
+                if field['data_type'] == 'none':
+                    continue
 
-            if 'ioc' not in field:
-                field['ioc'] = False
+                if 'ioc' not in field:
+                    field['ioc'] = False
 
-            if 'spotted' not in field:
-                field['spotted'] = False
+                if 'spotted' not in field:
+                    field['spotted'] = False
 
-            if 'safe' not in field:
-                field['safe'] = False
+                if 'safe' not in field:
+                    field['safe'] = False
 
-            tags = []
-            if 'tags' in field:
-                if field['tags'] is not None:
-                    tags += field['tags']
+                tags = []
+                if 'tags' in field:
+                    if field['tags'] is not None:
+                        tags += field['tags']
 
-            value = self.get_nested_field(source, field['field'])
+                value = self.get_nested_field(source, field['field'])
 
-            data_type = field['data_type']
-            # Check to make sure the value isn't actually an IP address
-            # if it is, change the data type to ip
-            try:
-                i = ipaddress.ip_address(value)
-                if isinstance(i, (ipaddress.IPv4Address, ipaddress.IPv6Address)):
-                    data_type = 'ip'
-            except:
-                pass
+                data_type = field['data_type']
+                # Check to make sure the value isn't actually an IP address
+                # if it is, change the data type to ip
+                try:
+                    i = ipaddress.ip_address(value)
+                    if isinstance(i, (ipaddress.IPv4Address, ipaddress.IPv6Address)):
+                        data_type = 'ip'
+                except:
+                    pass
 
-            source_field = field['field']
-            original_source_field = field['field']
+                source_field = field['field']
+                original_source_field = field['field']
 
-            # Set the source_field as the alias if one is defined
-            if 'alias' in field and field['alias']:
-                source_field = field['alias']
+                # Set the source_field as the alias if one is defined
+                if 'alias' in field and field['alias']:
+                    source_field = field['alias']
 
-            if value:
-                # Create a new observable for each item in the list
-                if isinstance(value, list):
-                    for item in value:
+                if value:
+                    # Create a new observable for each item in the list
+                    if isinstance(value, list):
+                        for item in value:
+                            observables += [{
+                                "value":str(item),
+                                "data_type":data_type,
+                                "tlp":field['tlp'],
+                                "ioc": field['ioc'],
+                                "safe": field['safe'],
+                                "spotted": field['spotted'],
+                                "tags":tags,
+                                "source_field": source_field,
+                                "original_source_field": original_source_field
+                            }]
+                    else:
                         observables += [{
-                            "value":str(item),
+                            "value":str(value),
                             "data_type":data_type,
                             "tlp":field['tlp'],
                             "ioc": field['ioc'],
@@ -153,20 +166,11 @@ class Elastic(Process):
                             "original_source_field": original_source_field
                         }]
                 else:
-                    observables += [{
-                        "value":str(value),
-                        "data_type":data_type,
-                        "tlp":field['tlp'],
-                        "ioc": field['ioc'],
-                        "safe": field['safe'],
-                        "spotted": field['spotted'],
-                        "tags":tags,
-                        "source_field": source_field,
-                        "original_source_field": original_source_field
-                    }]
-            else:
-                pass
-        return observables
+                    pass
+            return observables
+        except Exception as e:
+            logger.error(f"Failed to extract observables from source: {e} - {source}")
+            return observables
 
 
     def parse_events(self, hits, title=None, signature_values=[], risk_score=None,
