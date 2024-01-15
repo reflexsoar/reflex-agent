@@ -484,15 +484,22 @@ class Agent(object):
             **payload
         })
 
-        if self._detection_bulk_updater is None:
-            self._detection_bulk_updater = Thread(target=self.bulk_update_detections)
-            self._detection_bulk_updater.start()
+        use_bulk_update = True
 
-        # DEPRECATED IN FAVOR OF BULK UPDATE
-        #payload = json.loads(json.dumps(payload, default=str))
-        #response = self.call_mgmt_api(f"detection/{uuid}", data=payload, method='PUT')
-        #if response and response.status_code != 200:
-        #    self.logger.error(f"Failed to update detection {uuid}. API response code {response.status_code}, {response.text}")
+        try:
+            if self._detection_bulk_updater is None or not self._detection_bulk_updater.is_alive():
+                self._detection_bulk_updater = Thread(target=self.bulk_update_detections)
+                self._detection_bulk_updater.start()
+        except Exception as e:
+            self.logger.error(f"Failed to start bulk updater: {e}")
+            use_bulk_update = False
+
+        # If the bulk updater is not running, update the detection directly
+        if use_bulk_update == False:
+            payload = json.loads(json.dumps(payload, default=str))
+            response = self.call_mgmt_api(f"detection/{uuid}", data=payload, method='PUT')
+            if response and response.status_code != 200:
+                self.logger.error(f"Failed to update detection {uuid}. API response code {response.status_code}, {response.text}")
 
 
     def bulk_update_detections(self):
@@ -504,9 +511,8 @@ class Agent(object):
         while True:
             payload = []
 
-            while not self.detection_rule_updates.empty() and len(payload) < 50:
+            while not self.detection_rule_updates.empty() and len(payload) < 25:
                 payload.append(self.detection_rule_updates.get())
-                time.sleep(0.5)
 
             if len(payload) > 0:
 
