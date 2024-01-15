@@ -501,22 +501,26 @@ class Agent(object):
         while True:
             payload = []
 
-            print("Checking for detections to update")
-        
-            while not self.detection_rule_updates.empty() and len(payload) < 50:
-                payload.append(self.detection_rule_updates.get())
+            try:
+                print(f"Checking for detections to update - Queue Size: {self.detection_rule_updates.qsize()}")
 
-            if len(payload) > 0:
+                time.sleep(1)
+            
+                while not self.detection_rule_updates.empty() and len(payload) < 50:
+                    payload.append(self.detection_rule_updates.get())
 
-                try:
-                    print(f"Updating {len(payload)} detections")
-                    response = self.call_mgmt_api('detection/_bulk_update_stats', data={'detections': payload}, method='PUT')
-                    if response and response.status_code != 200:
-                        print(f"Failed to bulk update detections. API response code {response.status_code}, {response.text}")
-                except Exception as e:
-                    print(f"Failed to bulk update detections. {str(e)}")
-            else:
-                print("No detections to update")
+                if len(payload) > 0:
+
+                    
+                        print(f"Updating {len(payload)} detections")
+                        response = self.call_mgmt_api('detection/_bulk_update_stats', data={'detections': payload}, method='PUT')
+                        if response and response.status_code != 200:
+                            print(f"Failed to bulk update detections. API response code {response.status_code}, {response.text}")
+                    
+                else:
+                    print("No detections to update")
+            except Exception as e:
+                print(f"Failed to bulk update detections. {str(e)}")
 
             time.sleep(10)
 
