@@ -497,7 +497,7 @@ class Agent(object):
         are more than 50 items in the queue, bulk update the detections
         '''
 
-        while self._detection_bulk_updater.is_alive():
+        while True:
             payload = []
         
             while not self.detection_rule_updates.empty() and len(payload) < 50:
@@ -509,6 +509,8 @@ class Agent(object):
                 response = self.call_mgmt_api('detection/_bulk_update_stats', data={'detections': payload}, method='PUT')
                 if response and response.status_code != 200:
                     self.logger.error(f"Failed to bulk update detections. API response code {response.status_code}, {response.text}")
+            else:
+                self.logger.debug("No detections to update")
 
             time.sleep(1)
 
