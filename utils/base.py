@@ -499,7 +499,7 @@ class Agent(object):
 
         payload = []
         
-        while not self.detection_rule_updates.empty() and len(payload) < 10:
+        while not self.detection_rule_updates.empty() and len(payload) < 25:
             payload.append(self.detection_rule_updates.get())
 
         response = self.call_mgmt_api('detection/_bulk_update_stats', data={'detections': payload}, method='PUT')
