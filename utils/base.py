@@ -15,6 +15,7 @@ from requests import Session, Request
 from pluginbase import PluginBase
 from queue import Queue
 from loguru import logger
+from multiprocessing import Queue as MpQueue
 #from multiprocessing import Process, Queue
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -285,10 +286,8 @@ class Agent(object):
         self.cache_ttl = 30 # Number of minutes an item should be in the cache
         self.detection_rules = []
         self.health_check_interval = 30 # Number of seconds between health checks
-        self.detection_rule_updates = Queue()
-        self._detection_bulk_updater = Thread(target=self.bulk_update_detections, args=(self.detection_rule_updates,))
-        self.logger.info("Starting bulk detection rule updater")
-        self._detection_bulk_updater.start()
+        self.detection_rule_updates = MpQueue()
+        self._detection_bulk_updater = None
 
         # Periodically check to make sure the bulk updater is running
         # if it is not, start it
@@ -485,6 +484,10 @@ class Agent(object):
             **payload
         })
 
+        if self._detection_bulk_updater is None:
+            self._detection_bulk_updater = Thread(target=self.bulk_update_detections)
+            self._detection_bulk_updater.start()
+
         # DEPRECATED IN FAVOR OF BULK UPDATE
         #payload = json.loads(json.dumps(payload, default=str))
         #response = self.call_mgmt_api(f"detection/{uuid}", data=payload, method='PUT')
@@ -492,7 +495,7 @@ class Agent(object):
         #    self.logger.error(f"Failed to update detection {uuid}. API response code {response.status_code}, {response.text}")
 
 
-    def bulk_update_detections(self, detection_queue):
+    def bulk_update_detections(self):
         '''
         If the detection_rule_updates queue is not empty and there
         are more than 50 items in the queue, bulk update the detections
@@ -501,7 +504,17 @@ class Agent(object):
         while True:
             payload = []
 
-            print(f"Checking for detections to update - Queue Size: {detection_queue.qsize()}")
+            while not self.detection_rule_updates.empty() and len(payload) < 50:
+                payload.append(self.detection_rule_updates.get())
+                time.sleep(0.5)
+
+            if len(payload) > 0:
+
+                response = self.call_mgmt_api('detection/_bulk_update_stats', data={'detections': payload}, method='POST')
+                if response and response.status_code == 200:
+                    self.logger.info(f"Updated run stats for {len(payload)} detections")
+                else:
+                    self.logger.error(f"Failed to update detections. API response code {response.status_code}, {response.text}")
 
             time.sleep(1)
 
