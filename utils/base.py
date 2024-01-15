@@ -287,6 +287,7 @@ class Agent(object):
         self.health_check_interval = 30 # Number of seconds between health checks
         self.detection_rule_updates = Queue()
         self._detection_bulk_updater = Thread(target=self.bulk_update_detections)
+        self.logger.info("Starting bulk detection rule updater")
         self._detection_bulk_updater.start()
 
         # Periodically check to make sure the bulk updater is running
