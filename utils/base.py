@@ -287,6 +287,7 @@ class Agent(object):
         self.detection_rules = []
         self.health_check_interval = 30 # Number of seconds between health checks
         self.detection_rule_updates = MpQueue()
+        self.last_event_update_insert = None
         self._detection_bulk_updater = None
 
         # Periodically check to make sure the bulk updater is running
@@ -486,6 +487,8 @@ class Agent(object):
 
         use_bulk_update = True
 
+        self.last_event_update_insert = datetime.datetime.now()
+
         try:
             if self._detection_bulk_updater is None or not self._detection_bulk_updater.is_alive():
                 self._detection_bulk_updater = Thread(target=self.bulk_update_detections)
@@ -511,8 +514,10 @@ class Agent(object):
         while True:
             payload = []
 
-            while not self.detection_rule_updates.empty() and len(payload) < 25:
-                payload.append(self.detection_rule_updates.get())
+            if self.detection_rule_updates.qsize() >= 25 or (datetime.datetime.now() - self.last_event_update_insert).seconds > 3:
+
+                while not self.detection_rule_updates.empty() and len(payload) < 25:
+                    payload.append(self.detection_rule_updates.get())
 
             if len(payload) > 0:
 
