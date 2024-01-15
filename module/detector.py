@@ -2082,6 +2082,8 @@ class Detector(Process):
                         self.logger.error(
                             f"Failed to fetch field settings for {detection.name}")
                         return
+                    
+                self.logger.debug(f"Detection {detection.name} field settings: {field_settings}")
 
                 signature_fields = []
                 field_mapping = {
@@ -2093,13 +2095,8 @@ class Detector(Process):
                     if 'signature_fields' in field_settings and len(field_settings['signature_fields']) > 0:
                         signature_fields = field_settings['signature_fields']
 
-                    try:
-                        if 'fields' in field_settings and len(field_settings['fields']) > 0:
-                            field_mapping['fields'] = field_settings
-                    except:
-                        self.logger.error(
-                            f"Failed to parse field settings for {detection.name}")
-                        return
+                    if 'fields' in field_settings and len(field_settings['fields']) > 0:
+                        field_mapping['fields'] = field_settings
 
                     # Get the tag fields from the field settings
                     if 'tag_fields' in field_settings and len(field_settings['tag_fields']) > 0:
@@ -2125,7 +2122,7 @@ class Detector(Process):
 
                 try:
                     if len(field_mapping['fields']) == 0:
-                        print(_input['config'])
+                        self.logger.debug(f"Detection {detection.name} using input field mapping {_input['config']}")
                         field_mapping['fields'] = _input['config']['fields']
                 except:
                     self.logger.error(
