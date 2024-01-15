@@ -2084,7 +2084,9 @@ class Detector(Process):
                         return
 
                 signature_fields = []
-                field_mapping = {}
+                field_mapping = {
+                    'fields': []
+                }
                 tag_fields = []
                 
                 try:
@@ -2122,8 +2124,9 @@ class Detector(Process):
                     signature_fields = _input['config']['signature_fields']
 
                 try:
-                    if len(field_mapping) == 0:
-                        field_mapping = _input['config']['fields']
+                    if len(field_mapping['fields']) == 0:
+                        print(_input['config'])
+                        field_mapping['fields'] = _input['config']['fields']
                 except:
                     self.logger.error(
                         f"Failed to parse field settings for {detection.name}, using input defaults"
