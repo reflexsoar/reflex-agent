@@ -2122,7 +2122,7 @@ class Detector(Process):
 
                 try:
                     if len(field_mapping['fields']) == 0:
-                        self.logger.debug(f"Detection {detection.name} using input field mapping {_input['config']}")
+                        self.logger.debug(f"Detection {detection.name} using input field mapping {_input['config']['fields']}")
                         field_mapping['fields'] = _input['config']['fields']
                 except:
                     self.logger.error(
