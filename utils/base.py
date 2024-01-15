@@ -499,6 +499,8 @@ class Agent(object):
 
         while True:
             payload = []
+
+            print("Checking for detections to update")
         
             while not self.detection_rule_updates.empty() and len(payload) < 50:
                 payload.append(self.detection_rule_updates.get())
@@ -508,11 +510,11 @@ class Agent(object):
                 self.logger.info(f"Updating {len(payload)} detections")
                 response = self.call_mgmt_api('detection/_bulk_update_stats', data={'detections': payload}, method='PUT')
                 if response and response.status_code != 200:
-                    self.logger.error(f"Failed to bulk update detections. API response code {response.status_code}, {response.text}")
+                    print(f"Failed to bulk update detections. API response code {response.status_code}, {response.text}")
             else:
-                self.logger.debug("No detections to update")
+                print("No detections to update")
 
-            time.sleep(1)
+            time.sleep(10)
 
     
     def check_intel_list_values(self, list_uuid, values):
