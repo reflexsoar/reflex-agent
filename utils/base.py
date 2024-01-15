@@ -291,8 +291,8 @@ class Agent(object):
 
         # Periodically check to make sure the bulk updater is running
         # if it is not, start it
-        self._detection_bulk_updater_checker = Thread(target=self.check_bulk_updater)
-        self._detection_bulk_updater_checker.start()
+        #self._detection_bulk_updater_checker = Thread(target=self.check_bulk_updater)
+        #self._detection_bulk_updater_checker.start()
 
         # Set a role health state, 0 = disabled, 1 = degraded, 2 = healthy
         self.role_health = {
@@ -497,16 +497,20 @@ class Agent(object):
         are more than 50 items in the queue, bulk update the detections
         '''
 
-        payload = []
+        while self._detection_bulk_updater.is_alive():
+            payload = []
         
-        while not self.detection_rule_updates.empty() and len(payload) < 50:
-            payload.append(self.detection_rule_updates.get())
+            while not self.detection_rule_updates.empty() and len(payload) < 50:
+                payload.append(self.detection_rule_updates.get())
 
-        response = self.call_mgmt_api('detection/_bulk_update_stats', data={'detections': payload}, method='PUT')
-        if response and response.status_code != 200:
-            self.logger.error(f"Failed to bulk update detections. API response code {response.status_code}, {response.text}")
+            if len(payload) > 0:
 
-        time.sleep(1)
+                self.logger.info(f"Updating {len(payload)} detections")
+                response = self.call_mgmt_api('detection/_bulk_update_stats', data={'detections': payload}, method='PUT')
+                if response and response.status_code != 200:
+                    self.logger.error(f"Failed to bulk update detections. API response code {response.status_code}, {response.text}")
+
+            time.sleep(1)
 
     
     def check_intel_list_values(self, list_uuid, values):
