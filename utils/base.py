@@ -502,11 +502,8 @@ class Agent(object):
             payload = []
 
             print(f"Checking for detections to update - Queue Size: {self.detection_rule_updates.qsize()}")
-            
 
             time.sleep(1)
-
-            pass
 
     
     def check_intel_list_values(self, list_uuid, values):
