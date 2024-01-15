@@ -14,7 +14,7 @@ from .base import Event
 
 class Elastic(Process):
 
-    def __init__(self, config, field_mapping, credentials, signature_fields=[], input_uuid=None, timeout=30):
+    def __init__(self, config, field_mapping, credentials, signature_fields=[], input_uuid=None, timeout=60):
         ''' 
         Initializes a new Elasticsearch poller object
         which pushes information to the api

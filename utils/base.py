@@ -494,12 +494,12 @@ class Agent(object):
     def bulk_update_detections(self):
         '''
         If the detection_rule_updates queue is not empty and there
-        are more than 10 items in the queue, bulk update the detections
+        are more than 50 items in the queue, bulk update the detections
         '''
 
         payload = []
         
-        while not self.detection_rule_updates.empty() and len(payload) < 25:
+        while not self.detection_rule_updates.empty() and len(payload) < 50:
             payload.append(self.detection_rule_updates.get())
 
         response = self.call_mgmt_api('detection/_bulk_update_stats', data={'detections': payload}, method='PUT')
