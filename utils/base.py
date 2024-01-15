@@ -286,7 +286,7 @@ class Agent(object):
         self.detection_rules = []
         self.health_check_interval = 30 # Number of seconds between health checks
         self.detection_rule_updates = Queue()
-        self._detection_bulk_updater = Thread(target=self.bulk_update_detections)
+        self._detection_bulk_updater = Thread(target=self.bulk_update_detections, args=(self.detection_rule_updates,))
         self.logger.info("Starting bulk detection rule updater")
         self._detection_bulk_updater.start()
 
@@ -492,7 +492,7 @@ class Agent(object):
         #    self.logger.error(f"Failed to update detection {uuid}. API response code {response.status_code}, {response.text}")
 
 
-    def bulk_update_detections(self):
+    def bulk_update_detections(self, detection_queue):
         '''
         If the detection_rule_updates queue is not empty and there
         are more than 50 items in the queue, bulk update the detections
@@ -501,7 +501,7 @@ class Agent(object):
         while True:
             payload = []
 
-            print(f"Checking for detections to update - Queue Size: {self.detection_rule_updates.qsize()}")
+            print(f"Checking for detections to update - Queue Size: {detection_queue.qsize()}")
 
             time.sleep(1)
 
