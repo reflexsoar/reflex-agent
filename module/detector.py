@@ -370,17 +370,21 @@ class Detector(Process):
         '''
         Extracts all the fields as flattened dot notation
         '''
-        fields = []
-        for field in props:
-            if 'properties' in props[field]:
-                for k in props[field]['properties']:
-                    if 'fields' in props[field]['properties'][k]:
-                        for f in props[field]['properties'][k]['fields']:
-                            fields.append(f"{field}.{k}.{f}")
-                    fields.append(f"{field}.{k}")
-            else:
-                fields.append(field)
-        return fields
+        try:
+            fields = []
+            for field in props:
+                if 'properties' in props[field]:
+                    for k in props[field]['properties']:
+                        if 'fields' in props[field]['properties'][k]:
+                            for f in props[field]['properties'][k]['fields']:
+                                fields.append(f"{field}.{k}.{f}")
+                        fields.append(f"{field}.{k}")
+                else:
+                    fields.append(field)
+            return fields
+        except Exception as e:
+            self.logger.error(f"Error extracting fields: {e}")
+            return []
 
     def update_input_mappings(self):
         '''
@@ -599,25 +603,30 @@ class Detector(Process):
                 event = IndexedDict(response['hits']['hits'][0]['_source'])
                 possible_fields = event.keys()
 
-            # Discover the fields we need to get metrics for
-            if len(possible_fields) > 0:
-                data = elastic.conn.field_caps(index=_input['config']['index'], fields=list(possible_fields))
-                for field in data["fields"]:
-                    field_data = data["fields"][field]
-                    for field_type in field_data:
-                        if field_data[field_type]["aggregatable"]:
-                            fields.append(field)
+            try:
 
-                # Get the metrics for each field            
-                with ThreadPoolExecutor(max_workers=10) as executor:
-                    futures = [executor.submit(self._get_field_metrics, elastic, _input['config']['index'], query, field) for field in fields]
+                # Discover the fields we need to get metrics for
+                if len(possible_fields) > 0:
+                    data = elastic.conn.field_caps(index=_input['config']['index'], fields=list(possible_fields))
+                    for field in data["fields"]:
+                        field_data = data["fields"][field]
+                        for field_type in field_data:
+                            if field_data[field_type]["aggregatable"]:
+                                fields.append(field)
 
-                    for future in futures:
-                        try:
-                            if future.result() != None:                        
-                                metrics.append(future.result())
-                        except Exception as e:
-                            continue
+                    # Get the metrics for each field            
+                    with ThreadPoolExecutor(max_workers=10) as executor:
+                        futures = [executor.submit(self._get_field_metrics, elastic, _input['config']['index'], query, field) for field in fields]
+
+                        for future in futures:
+                            try:
+                                if future.result() != None:                        
+                                    metrics.append(future.result())
+                            except Exception as e:
+                                continue
+            except Exception as e:
+                self.logger.error(f"Error getting field metrics: {e}")
+                return
 
         return metrics
 
@@ -2081,8 +2090,14 @@ class Detector(Process):
                 try:
                     if 'signature_fields' in field_settings and len(field_settings['signature_fields']) > 0:
                         signature_fields = field_settings['signature_fields']
-                    if 'fields' in field_settings and len(field_settings['fields']) > 0:
-                        field_mapping = field_settings
+
+                    try:
+                        if 'fields' in field_settings and len(field_settings['fields']) > 0:
+                            field_mapping = field_settings
+                    except:
+                        self.logger.error(
+                            f"Failed to parse field settings for {detection.name}")
+                        return
 
                     # Get the tag fields from the field settings
                     if 'tag_fields' in field_settings and len(field_settings['tag_fields']) > 0:
@@ -2105,8 +2120,15 @@ class Detector(Process):
                 # If the length of signature fields or field_mapping is 0 use the settings from the input
                 if len(signature_fields) == 0:
                     signature_fields = _input['config']['signature_fields']
-                if len(field_mapping) == 0:
-                    field_mapping = _input['config']['fields']
+
+                try:
+                    if len(field_mapping) == 0:
+                        field_mapping = _input['config']['fields']
+                except:
+                    self.logger.error(
+                        f"Failed to parse field settings for {detection.name}, using input defaults"
+                    )
+                    pass
                 
                 # If the detection calls for tag fields use them instead of the input tag fields
                 if len(tag_fields) > 0:
