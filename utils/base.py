@@ -516,7 +516,7 @@ class Agent(object):
 
             if self.detection_rule_updates.qsize() >= 10 or (datetime.datetime.now() - self.last_event_update_insert).seconds > 1:
 
-                while not self.detection_rule_updates.empty() and len(payload) < 10:
+                while not self.detection_rule_updates.empty() and len(payload) < 50:
                     payload.append(self.detection_rule_updates.get())
 
             if len(payload) > 0:
