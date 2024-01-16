@@ -8,7 +8,7 @@ plugins/*.py
 
 .vscode/
 
-field_settings/*.db
+field_settings/*.db*
 
 test_base_rule.py
 

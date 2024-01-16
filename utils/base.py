@@ -15,6 +15,7 @@ from requests import Session, Request
 from pluginbase import PluginBase
 from queue import Queue
 from loguru import logger
+from multiprocessing import Queue as MpQueue
 #from multiprocessing import Process, Queue
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -245,7 +246,7 @@ class Agent(object):
         self.access_token = os.getenv('ACCESS_TOKEN')
         self.console_url = os.getenv('CONSOLE_URL')
         self.ip = self.agent_ip()
-        self.VERSION_NUMBER = "2024.01.15-rc0"
+        self.VERSION_NUMBER = "2024.01.15-rc1"
 
         log_levels = {
             'DEBUG': logging.DEBUG,
@@ -285,6 +286,14 @@ class Agent(object):
         self.cache_ttl = 30 # Number of minutes an item should be in the cache
         self.detection_rules = []
         self.health_check_interval = 30 # Number of seconds between health checks
+        self.detection_rule_updates = MpQueue()
+        self.last_event_update_insert = None
+        self._detection_bulk_updater = None
+
+        # Periodically check to make sure the bulk updater is running
+        # if it is not, start it
+        #self._detection_bulk_updater_checker = Thread(target=self.check_bulk_updater)
+        #self._detection_bulk_updater_checker.start()
 
         # Set a role health state, 0 = disabled, 1 = degraded, 2 = healthy
         self.role_health = {
@@ -292,6 +301,19 @@ class Agent(object):
             'runner': 0,
             'poller': 0
         }
+
+    def check_bulk_updater(self):
+        '''
+        Checks to make sure the bulk updater is running
+        and if it is not, starts it
+        '''
+
+        while True:
+            if not self._detection_bulk_updater.is_alive():
+                self.logger.error('The detection bulk updater is not running, starting it again')
+                self._detection_bulk_updater = Thread(target=self.bulk_update_detections)
+                self._detection_bulk_updater.start()
+            time.sleep(5)
 
     def agent_ip(self):
         '''
@@ -458,10 +480,54 @@ class Agent(object):
         Updated a detection via PUT request to the API
         '''
 
-        payload = json.loads(json.dumps(payload, default=str))
-        response = self.call_mgmt_api(f"detection/{uuid}", data=payload, method='PUT')
-        if response and response.status_code != 200:
-            self.logger.error(f"Failed to update detection {uuid}. API response code {response.status_code}, {response.text}")
+        self.detection_rule_updates.put({
+            'uuid': uuid,
+            **payload
+        })
+
+        use_bulk_update = True
+
+        self.last_event_update_insert = datetime.datetime.now()
+
+        try:
+            if self._detection_bulk_updater is None or not self._detection_bulk_updater.is_alive():
+                self._detection_bulk_updater = Thread(target=self.bulk_update_detections)
+                self._detection_bulk_updater.start()
+        except Exception as e:
+            self.logger.error(f"Failed to start bulk updater: {e}")
+            use_bulk_update = False
+
+        # If the bulk updater is not running, update the detection directly
+        if use_bulk_update == False:
+            payload = json.loads(json.dumps(payload, default=str))
+            response = self.call_mgmt_api(f"detection/{uuid}", data=payload, method='PUT')
+            if response and response.status_code != 200:
+                self.logger.error(f"Failed to update detection {uuid}. API response code {response.status_code}, {response.text}")
+
+
+    def bulk_update_detections(self):
+        '''
+        If the detection_rule_updates queue is not empty and there
+        are more than 50 items in the queue, bulk update the detections
+        '''
+
+        while True:
+            payload = []
+
+            if self.detection_rule_updates.qsize() >= 10 or (datetime.datetime.now() - self.last_event_update_insert).seconds > 1:
+
+                while not self.detection_rule_updates.empty() or len(payload) < 50:
+                    payload.append(self.detection_rule_updates.get())
+
+            if len(payload) > 0:
+
+                response = self.call_mgmt_api('detection/_bulk_update_stats', data={'detections': payload}, method='POST')
+                if response and response.status_code == 200:
+                    self.logger.info(f"Updated run stats for {len(payload)} detections")
+                else:
+                    self.logger.error(f"Failed to update detections. API response code {response.status_code}, {response.text}")
+
+            time.sleep(1)
 
     
     def check_intel_list_values(self, list_uuid, values):
