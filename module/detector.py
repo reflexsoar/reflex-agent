@@ -1126,12 +1126,15 @@ class Detector(Process):
                 for excluded_source in detection.source_monitor_config['excluded_sources']:
 
                     if "*" in excluded_source:
-                        _match_pattern = excluded_source.replace(".", "\.")
+                        
+                        # Replace * with .*
                         _match_pattern = excluded_source.replace("*", ".*")
+                        
+                        # Add a start of string and end of string match pattern
                         _match_pattern = f"^{_match_pattern}$"
-                        _match_pattern = re.compile(_match_pattern)
+                        
                         for source in data_sources:
-                            if not _match_pattern.match(source):
+                            if re.match(_match_pattern, source):
                                 filtered_sources.append(source)
                     else:
                         if excluded_source in data_sources:
@@ -1140,8 +1143,8 @@ class Detector(Process):
             self.logger.info(f"Filtered sources after: {filtered_sources}")
             self.logger.info(f"Data sources: {data_sources}")
 
-            # Filter data sources to only those that are in filtered_sources and remaining in data_sources
-            data_sources = [d for d in data_sources if d in filtered_sources]
+            # Filter data sources to only those that are not in filtered_sources and remaining in data_sources
+            data_sources = [d for d in data_sources if d not in filtered_sources]
             self.logger.info(f"Data sources after filtering: {data_sources}")
         except Exception as e:
             self.logger.error(
