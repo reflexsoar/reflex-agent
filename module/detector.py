@@ -147,7 +147,7 @@ class Detector(Process):
     Detection rules that return matches are sent to the API as Events
     '''
 
-    def __init__(self, config, agent=None, log_level='ERROR', *args, **kwargs):
+    def __init__(self, config, agent=None, log_level='INFO', *args, **kwargs):
 
         super(Detector, self).__init__(*args, **kwargs)
 
