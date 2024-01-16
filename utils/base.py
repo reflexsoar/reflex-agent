@@ -827,7 +827,8 @@ class Agent(object):
         agent_data = {
             "name": self.hostname,
             "ip_address": self.ip,
-            "roles": roles            
+            "roles": roles,
+            "unique_identifier": os.getenv('AGENT_UNIQUE_IDENTIFIER', None)
         }
 
         if self.options.groups:
@@ -870,7 +871,7 @@ AGENT_UUID='{}'""".format(console, data['token'], data['uuid'])
                 error = json.loads(response.content)['message']
                 self.logger.info('Failed to pair agent. %s' % error)
                 return False
-            time.sleep(5)
+            time.sleep(1)
             self.logger.info('Pairing complete')
             return True
         except Exception as error:
