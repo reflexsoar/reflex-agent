@@ -1045,6 +1045,8 @@ class Detector(Process):
         is_delta = detection.source_monitor_config['delta_change']
         operator = detection.source_monitor_config['operator']
 
+        self.logger.info(f"{detection.source_monitor_config}")
+
         if 'source_lists' not in detection.source_monitor_config:
             detection.source_monitor_config['source_lists'] = []
         if 'excluded_source_lists' not in detection.source_monitor_config:
@@ -1117,6 +1119,8 @@ class Detector(Process):
         try:
             filtered_sources = []
 
+            self.logger.info(f"Filtered sources: {filtered_sources}")
+
             # If the detection has any data sources to exclude remove them from the list
             if len(detection.source_monitor_config['excluded_sources']) > 0:
                 for excluded_source in detection.source_monitor_config['excluded_sources']:
@@ -1133,8 +1137,12 @@ class Detector(Process):
                         if excluded_source in data_sources:
                             data_sources.remove(excluded_source)
 
+            self.logger.info(f"Filtered sources after: {filtered_sources}")
+            self.logger.info(f"Data sources: {data_sources}")
+
             # Filter data sources to only those that are in filtered_sources and remaining in data_sources
             data_sources = [d for d in data_sources if d in filtered_sources]
+            self.logger.info(f"Data sources after filtering: {data_sources}")
         except Exception as e:
             self.logger.error(
                 f"Error filtering data sources for rule {detection.name}: {e}")
