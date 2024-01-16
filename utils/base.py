@@ -604,8 +604,17 @@ class Agent(object):
             self.logger.info('Agent is healthy')
 
         data = {'healthy': self.healthy, 'health_issues': self.health_issues, 'recovered': recovered, 'version': self.VERSION_NUMBER}
-        
 
+        if self.uuid is None:
+            import base64
+            # Get the UUID from the access token
+            _token_parts = self.access_token.split('.')
+            _token = json.loads(base64.b64decode(_token_parts[1]))
+            self.uuid = _token['uuid']
+
+        data['name'] = self.hostname
+        data['ip_address'] = self.ip
+        
         response = self.call_mgmt_api('agent/heartbeat/{}'.format(self.uuid), method='POST', data=data)
         if response and response.status_code == 200:
             return response
