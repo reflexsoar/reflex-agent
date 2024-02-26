@@ -2236,7 +2236,7 @@ class Detector(Process):
 
                         if detection.name == 'Suspicious Control Panel DLL Load':
                             DEBUG_MODE = True
-                            self.logger.info(f"QUERY DEBUG: {detection.query}")
+                            self.logger.info(f"QUERY DEBUG: {query}")
                             self.logger.info(f"SEARCH RESULT: {res}")
                             
                         if 'total' in res['hits']:
