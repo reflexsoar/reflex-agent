@@ -2228,12 +2228,16 @@ class Detector(Process):
                             index=_input['config']['index'], body=query, scroll='30s')
                         
                         scroll_id = None
+
+                        DEBUG_MODE = False
                         
                         if '_scroll_id' in res:
                             scroll_id = res['_scroll_id']
 
                         if detection.name == 'Suspicious Control Panel DLL Load':
+                            DEBUG_MODE = True
                             self.logger.info(f"QUERY DEBUG: {detection.query}")
+                            self.logger.info(f"SEARCH RESULT: {res}")
                             
                         if 'total' in res['hits']:
                             self.logger.info(
@@ -2256,6 +2260,8 @@ class Detector(Process):
                             # TODO: Move scroll time to config
                             res = elastic.conn.scroll(
                                 scroll_id=scroll_id, scroll='30s')
+                            if DEBUG_MODE:
+                                self.logger.info(f"SCROLL RESULT {scroll_id}: {res}")
                             if len(res['hits']['hits']) > 0:
                                 query_time += res['took']
                                 self.logger.info(
