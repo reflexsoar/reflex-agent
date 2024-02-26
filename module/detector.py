@@ -2233,7 +2233,7 @@ class Detector(Process):
                             scroll_id = res['_scroll_id']
 
                         if detection.name == 'Suspicious Control Panel DLL Load':
-                            print(detection.query)
+                            self.logger.info(f"QUERY DEBUG: {detection.query}")
                             
                         if 'total' in res['hits']:
                             self.logger.info(
