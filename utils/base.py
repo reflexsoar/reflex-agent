@@ -246,7 +246,7 @@ class Agent(object):
         self.access_token = os.getenv('ACCESS_TOKEN')
         self.console_url = os.getenv('CONSOLE_URL')
         self.ip = self.agent_ip()
-        self.VERSION_NUMBER = "2024.01.30-rc0"
+        self.VERSION_NUMBER = "2024.03.06-rc0"
 
         log_levels = {
             'DEBUG': logging.DEBUG,
