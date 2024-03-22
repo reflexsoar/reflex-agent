@@ -13,3 +13,4 @@ field_settings/*.db*
 test_base_rule.py
 
 test.py
+config.txt.bak
