@@ -76,6 +76,12 @@ if __name__ == "__main__":
                 restart_roles = True
 
             if agent.config:
+                LOG_LEVEL = 'INFO'
+                if options.debug:
+                    LOG_LEVEL = 'DEBUG'
+
+                if options.debug:
+                    logger.debug(f"Agent config: {agent.config}")
 
                 agent_roles = {
                     'runner': Runner,
@@ -84,9 +90,6 @@ if __name__ == "__main__":
                     # 'poller': PollerNew,
                 }
 
-                LOG_LEVEL = 'INFO'
-                if options.debug:
-                    LOG_LEVEL = 'DEBUG'
                 role_configs = {
                     'runner': {
                         'config': agent.config['policy'].get('runner_config', None),
