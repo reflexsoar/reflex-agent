@@ -76,23 +76,25 @@ class MitreMapper(Process):
         input_uuid = target_input['uuid']
 
         if len(target_input.get('data_source_templates', [])) == 0:
-            self.logger.info(f"No data source templates found for { input_name } ({ input_uuid })")
+            self.logger.info(
+                f"No data source templates found for { input_name } ({ input_uuid })")
             return
-        
+
         try:
             es = self.build_connection(target_input)
         except Exception as e:
             self.logger.error(f"Failed to build connection: {e}")
             return
-        
+
         try:
             if not es.conn.ping():
-                self.logger.error(f"Failed to ping { input_name } ({ input_uuid })")
+                self.logger.error(
+                    f"Failed to ping { input_name } ({ input_uuid })")
                 return
         except Exception as e:
-            self.logger.error(f"Failed to ping { input_name } ({ input_uuid }): {e}")
+            self.logger.error(
+                f"Failed to ping { input_name } ({ input_uuid }): {e}")
             return
-            
 
         # Build a multisearch query for each data source in the data source templates sources
         # array and then execute that search against the target input
@@ -127,21 +129,24 @@ class MitreMapper(Process):
                             }
                         }
                     }
-        
-        self.logger.info(f"Mapping { input_name } ({ input_uuid }) to a data source template")
+
+        self.logger.info(
+            f"Mapping { input_name } ({ input_uuid }) to a data source template")
 
         observed_data_sources = []
         try:
-            results = es.conn.search(index=target_input['config']['index'], body=query)
+            results = es.conn.search(
+                index=target_input['config']['index'], body=query)
             if 'aggregations' in results:
                 for agg in results['aggregations']:
                     # If the count is greater than 0, add the data source to the list
                     if results['aggregations'][agg]['doc_count'] > 0:
                         observed_data_sources.append(agg)
-            
+
                 # Update the data sources, even if the list is empty
-                self.update_input_data_sources(target_input['uuid'], observed_data_sources)
-            
+                self.update_input_data_sources(
+                    target_input['uuid'], observed_data_sources)
+
         except Exception as e:
             self.logger.error(f"Failed to execute search: {e}")
 
@@ -155,6 +160,7 @@ class MitreMapper(Process):
         response = self.agent.call_mgmt_api('input')
         if response.status_code == 200:
             self.inputs = response.json()['inputs']
+            self.logger.debug(f"Inputs: {self.inputs}")
         else:
             self.logger.error(f"Failed to get inputs: {response.text}")
 
@@ -167,8 +173,10 @@ class MitreMapper(Process):
         })
         if response.status_code == 200:
             self.logger.info(f"Updated data sources for {uuid}")
+            self.logger.debug(f"Updated data sources: {data_sources}")
         else:
-            self.logger.error(f"Failed to update data sources for {uuid}: {response.text}")
+            self.logger.error(
+                f"Failed to update data sources for {uuid}: {response.text}")
 
     def load_data_source_templates(self):
         '''
@@ -181,7 +189,6 @@ class MitreMapper(Process):
         else:
             self.logger.error(
                 f"Failed to get data source templates: {response.text}")
-
 
     def run(self):
         """
@@ -196,7 +203,7 @@ class MitreMapper(Process):
             self.load_inputs()
 
             with ThreadPoolExecutor(
-                max_workers=self.config['concurrent_inputs']) as executor:
+                    max_workers=self.config['concurrent_inputs']) as executor:
                 executor.map(self.map_input_to_data_source, self.inputs)
 
             self.logger.info('Mapping complete, waiting')

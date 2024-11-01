@@ -9,7 +9,7 @@ from functools import partial
 from optparse import OptionParser as op
 from utils.base import Agent, Plugin
 from multiprocessing import Process, Queue
-from options import options
+from module.options import options
 from utils.elasticsearch import Elastic
 from dotenv import load_dotenv
 from module import Detector, Runner, Poller as PollerNew, MitreMapper

@@ -871,6 +871,7 @@ class Detector(Process):
         if response and response.status_code == 200:
             self.detection_rules = response.json()['detections']
             self.logger.info(f"Loaded {len(self.detection_rules)} detections")
+            self.logger.debug(f"Detections: {self.detection_rules}")
 
         try:
 
