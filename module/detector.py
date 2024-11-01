@@ -21,10 +21,11 @@ from utils.base import JSONSerializable, Event as ReflexEvent
 from utils.elasticsearch import Elastic
 from utils.indexed_dict import IndexedDict
 from .threshold import ThresholdRule
-#from .rule import BaseRule
+# from .rule import BaseRule
 
 es_logger = logging.getLogger('opensearch')
 es_logger.setLevel(logging.WARNING)
+
 
 class Detection(JSONSerializable):
     '''
@@ -43,7 +44,6 @@ class Detection(JSONSerializable):
 
     def __repr__(self) -> str:
         return f"Detection({self.__dict__})"
-
 
     def should_run(self, catchup_period=1440) -> bool:
         '''
@@ -64,22 +64,23 @@ class Detection(JSONSerializable):
                 now = datetime.datetime.now(timezone(self.schedule_timezone))
             else:
                 now = datetime.datetime.utcnow()
-                
+
             for day_of_week in self.schedule:
                 day_config = self.schedule[day_of_week]
                 if 'active' in day_config and day_config['active']:
                     if day_of_week == now.strftime("%A").lower():
 
-                        # For each define from to in hours check if the 
+                        # For each define from to in hours check if the
                         # current hours and minutes is within the range
                         for time_range in day_config['hours']:
-                            
+
                             # Get the current hours and minutes in 24 hour format
                             now_time = f"{now.hour:02d}{now.minute:02d}"
                             now_time = int(now_time)
 
                             # Get the from and to hours and minutes in 24 hour format
-                            from_time = int(time_range["from"].replace(":", ""))
+                            from_time = int(
+                                time_range["from"].replace(":", ""))
                             to_time = int(time_range["to"].replace(":", ""))
 
                             # If the current time is within the range, allow the run
@@ -214,7 +215,7 @@ class Detector(Process):
             _events.extend(grouped_events[signature])
 
         return _events
-    
+
     def enrich_event(self, events, additional_fields: dict = None):
         ''' Adds additional fields expected under certain writeback conditions
         '''
@@ -222,7 +223,8 @@ class Detector(Process):
 
             if isinstance(event, ReflexEvent):
                 setattr(event, '_op_type', 'create')
-                setattr(event, '@timestamp', datetime.datetime.utcnow().isoformat())
+                setattr(event, '@timestamp',
+                        datetime.datetime.utcnow().isoformat())
             else:
                 event['_op_type'] = 'create'
                 event['@timestamp'] = datetime.datetime.utcnow().isoformat()
@@ -250,8 +252,9 @@ class Detector(Process):
         if os.getenv('REFLEX_DETECTIONS_WRITEBACK_INDEX') != None:
             self.logger.info(
                 f"Writing {len(events)} events to {os.getenv('REFLEX_DETECTIONS_WRITEBACK_INDEX')}")
-            
-            events = [e for e in self.enrich_event(events, additional_fields=additional_fields)]
+
+            events = [e for e in self.enrich_event(
+                events, additional_fields=additional_fields)]
 
             bulk(conn, events, index=os.getenv(
                 'REFLEX_DETECTIONS_WRITEBACK_INDEX'))
@@ -285,7 +288,7 @@ class Detector(Process):
         if detection_id in self.new_term_state_table and field in self.new_term_state_table[detection_id]:
             return self.new_term_state_table[detection_id][field]
         return []
-    
+
     def build_exceptions(self, query, detection):
         """
         Builds the exceptions for a detection rule
@@ -293,7 +296,7 @@ class Detector(Process):
         if hasattr(detection, 'exceptions') and detection.exceptions != None:
 
             query["query"]["bool"]["must_not"] = []
-            
+
             for exception in detection.exceptions:
 
                 if 'list' in exception and exception['list']['uuid'] != None:
@@ -480,42 +483,42 @@ class Detector(Process):
                     credential_uuid)
 
         return rules
-    
+
     def _get_field_metrics(self, elastic, index, query, field):
 
-        FIELD_PREFIXES_EXCLUSIONS = ['event','host.os', '@', 'agent', 'process.pid',
-                             'process_pid', 'winlog.process.pid', 'winlog.process_pid',
-                             'winlog.task', "_", "winlog.opcode", "log.level", "winlog.provider_name",
-                             "winlog.api"]
-        
+        FIELD_PREFIXES_EXCLUSIONS = ['event', 'host.os', '@', 'agent', 'process.pid',
+                                     'process_pid', 'winlog.process.pid', 'winlog.process_pid',
+                                     'winlog.task', "_", "winlog.opcode", "log.level", "winlog.provider_name",
+                                     "winlog.api"]
+
         # If the field starts with one of the exclusions, return
         for prefix in FIELD_PREFIXES_EXCLUSIONS:
             if field.startswith(prefix):
                 return
-            
+
         query['size'] = 0
         query['aggs'] = {
-                f"{field}-cardinality": {
-                    "cardinality": {
-                        "field": field
-                    }
-                },
-                f"{field}-value_count": {
-                    "value_count": {
-                        "field": field
-                    }
-                },
-                f"{field}-top-ten": {
-                    "terms": {
-                        "field": field,
-                        "size": 10
-                    }
+            f"{field}-cardinality": {
+                "cardinality": {
+                    "field": field
+                }
+            },
+            f"{field}-value_count": {
+                "value_count": {
+                    "field": field
+                }
+            },
+            f"{field}-top-ten": {
+                "terms": {
+                    "field": field,
+                    "size": 10
                 }
             }
+        }
 
         response = elastic.conn.search(
             index=index, body=query)
-        
+
         # If the response is successful
         if response["timed_out"] == False:
             # Get the aggregations
@@ -539,7 +542,8 @@ class Detector(Process):
             is_signficant = False
 
             for item in field_metrics['top_ten']:
-                pct = round(item['doc_count']/field_metrics['value_count']*100, 2)
+                pct = round(item['doc_count'] /
+                            field_metrics['value_count']*100, 2)
                 item['pct'] = pct
                 if item['pct'] > 15.00:
                     is_signficant = True
@@ -550,8 +554,7 @@ class Detector(Process):
             # If the value_count is greater than 1000
             if field_metrics['value_count'] >= 1:
                 return field_metrics
-            
-    
+
     def _field_metrics(self, detection):
 
         # Get the input for the detection
@@ -559,7 +562,7 @@ class Detector(Process):
         credential = self.credentials[_input['credential']]
         elastic = Elastic(_input['config'],
                           _input['field_mapping'], credential)
-        
+
         # Get the fields from a single hit of the event
         query = {
             "query": {
@@ -589,12 +592,13 @@ class Detector(Process):
             response = elastic.conn.search(
                 index=_input['config']['index'], body=query)
         except Exception as e:
-            self.logger.error(f"Error performing primary field metrics search: {e}")
+            self.logger.error(
+                f"Error performing primary field metrics search: {e}")
             return
-        
+
         # If the response has hits extract the events fields by flattening the dictionary keys
         # with a . separator
-        
+
         metrics = []
         if response:
             possible_fields = []
@@ -607,20 +611,22 @@ class Detector(Process):
 
                 # Discover the fields we need to get metrics for
                 if len(possible_fields) > 0:
-                    data = elastic.conn.field_caps(index=_input['config']['index'], fields=list(possible_fields))
+                    data = elastic.conn.field_caps(
+                        index=_input['config']['index'], fields=list(possible_fields))
                     for field in data["fields"]:
                         field_data = data["fields"][field]
                         for field_type in field_data:
                             if field_data[field_type]["aggregatable"]:
                                 fields.append(field)
 
-                    # Get the metrics for each field            
+                    # Get the metrics for each field
                     with ThreadPoolExecutor(max_workers=10) as executor:
-                        futures = [executor.submit(self._get_field_metrics, elastic, _input['config']['index'], query, field) for field in fields]
+                        futures = [executor.submit(
+                            self._get_field_metrics, elastic, _input['config']['index'], query, field) for field in fields]
 
                         for future in futures:
                             try:
-                                if future.result() != None:                        
+                                if future.result() != None:
                                     metrics.append(future.result())
                             except Exception as e:
                                 continue
@@ -770,7 +776,7 @@ class Detector(Process):
 
                 missing_fields = []
                 for field in required_fields:
-                    
+
                     # Run an exists query for each field to see if it exists
                     exists_query = {
                         "query": {
@@ -793,7 +799,7 @@ class Detector(Process):
                             }
                         }
                     }
-                    
+
                     # Use a count query to get the number of documents that have the field
                     response = elastic.conn.count(
                         index=_input['config']['index'], body=exists_query)
@@ -805,7 +811,8 @@ class Detector(Process):
 
                 # Strip all field warnings
                 if detection.warnings != None:
-                    remaining_warnings = [warning for warning in detection.warnings if not warning.startswith('missing-field:') and warning != 'missing-fields']
+                    remaining_warnings = [warning for warning in detection.warnings if not warning.startswith(
+                        'missing-field:') and warning != 'missing-fields']
                     detection.warnings = remaining_warnings
 
                 # If there are missing fields, add a warning to the detection else
@@ -850,7 +857,7 @@ class Detector(Process):
         with ThreadPoolExecutor(max_workers=max_parallel_assessments) as executor:
             executor.map(self._assess_rule, rules)
 
-        #for rule in self.load_rules_for_assessment():
+        # for rule in self.load_rules_for_assessment():
         #    self._assess_rule(rule)
 
     def load_detections(self, active=True):
@@ -864,7 +871,7 @@ class Detector(Process):
         if response and response.status_code == 200:
             self.detection_rules = response.json()['detections']
             self.logger.info(f"Loaded {len(self.detection_rules)} detections")
-        
+
         try:
 
             # Load all the input configurations for each detection
@@ -907,7 +914,6 @@ class Detector(Process):
             flat_key = '.'.join(field)
             if flat_key in message:
                 return message[flat_key]
-
 
         if isinstance(field, str) and message:
             # If the field exists as a flat field with .'s in it return the field
@@ -1056,13 +1062,13 @@ class Detector(Process):
 
         data_sources.extend(detection.source_monitor_config['data_sources'])
 
-        # If the rule calls for auto discovery of data streams get the list of 
+        # If the rule calls for auto discovery of data streams get the list of
         # data streams, filtering out system managed data streams and extend
         # the list of data sources
         _data_streams = []
         if 'autodiscover_data_streams' in detection.source_monitor_config:
             if detection.source_monitor_config['autodiscover_data_streams'] is True:
-                
+
                 try:
                     search = elastic.conn.indices.get_data_stream()
                     for stream in search['data_streams']:
@@ -1073,7 +1079,7 @@ class Detector(Process):
                 except Exception as e:
                     self.logger.error(
                         f"Error auto discovering data streams for rule {detection.name}: {e}")
-                    
+
             # If we have a time filter on our datastream discovery, check each datastreams
             # maximum_timestamp to see if it is within the time filter
             if 'ignore_data_streams_older_than_days' in detection.source_monitor_config:
@@ -1088,7 +1094,8 @@ class Detector(Process):
 
                         # Build a lookup table of data stream names and their maximum_timestamp
                         for stream in stats_search['data_streams']:
-                            _data_stream_stats[stream['name']] = stream['maximum_timestamp']
+                            _data_stream_stats[stream['name']
+                                               ] = stream['maximum_timestamp']
 
                             # If the data stream is older than the ignore_data_streams_older_than_days
                             # property, remove it from the list of data streams to monitor
@@ -1105,7 +1112,7 @@ class Detector(Process):
                             f"Error fetching data stream stats for rule {detection.name}: {e}")
 
         # Append the data streams to the list of data sources
-        if len(_data_streams) > 0 :
+        if len(_data_streams) > 0:
             data_sources.extend(_data_streams)
 
         # If the detection has any data sources in intel lists add them to the list
@@ -1122,13 +1129,13 @@ class Detector(Process):
                 for excluded_source in detection.source_monitor_config['excluded_sources']:
 
                     if "*" in excluded_source:
-                        
+
                         # Replace * with .*
                         _match_pattern = excluded_source.replace("*", ".*")
 
                         # Add a start of string and end of string match pattern
                         _match_pattern = f"^{_match_pattern}$"
-                        
+
                         for source in data_sources:
                             if re.match(_match_pattern, source):
                                 filtered_sources.append(source)
@@ -1137,7 +1144,8 @@ class Detector(Process):
                             data_sources.remove(excluded_source)
 
             # Filter data sources to only those that are not in filtered_sources and remaining in data_sources
-            data_sources = [d for d in data_sources if d not in filtered_sources]
+            data_sources = [
+                d for d in data_sources if d not in filtered_sources]
             self.logger.info(f"Data sources after filtering: {data_sources}")
         except Exception as e:
             self.logger.error(
@@ -1298,7 +1306,8 @@ class Detector(Process):
                 'organization': detection.organization
             }
 
-            self.writeback(elastic.conn, docs, additional_fields=additonal_fields)
+            self.writeback(elastic.conn, docs,
+                           additional_fields=additonal_fields)
 
             # If the detection has suppression_max_events set to something other than 0
             # suppress the events
@@ -1397,7 +1406,7 @@ class Detector(Process):
 
                     if '_scroll_id' in response:
                         scroll_id = response['_scroll_id']
-                        
+
                     scroll_size = response['hits']['total']['value']
                     query_time += response['took']
 
@@ -1594,7 +1603,8 @@ class Detector(Process):
                         if detection.warnings:
                             update_payload['warnings'] = detection.warnings
                             if isinstance(update_payload['warnings'], list) and 'max_terms_exceeded' not in update_payload['warnings']:
-                                update_payload['warnings'].append('max_terms_exceeded')
+                                update_payload['warnings'].append(
+                                    'max_terms_exceeded')
                         else:
                             update_payload['warnings'] = ['max_terms_exceeded']
 
@@ -1679,7 +1689,7 @@ class Detector(Process):
             if 'aggregations' in res:
                 if res["aggregations"][detection.new_terms_config['key_field']]["buckets"]:
                     new_terms = [term["key"] for term in res["aggregations"]
-                                [detection.new_terms_config['key_field']]["buckets"]]
+                                 [detection.new_terms_config['key_field']]["buckets"]]
 
         # Calculate the difference between the old and new terms
         net_new_terms = [term for term in new_terms if term not in old_terms]
@@ -2091,7 +2101,8 @@ class Detector(Process):
                     if response and response.status_code == 200:
                         field_settings = response.json()
                         # Cache the settings for 30 minutes to avoid calling the API too often
-                        self.field_setting_cache.set(detection.uuid, field_settings, expire=30*60)
+                        self.field_setting_cache.set(
+                            detection.uuid, field_settings, expire=30*60)
                     else:
                         self.logger.error(
                             f"Failed to fetch field settings for {detection.name}")
@@ -2102,7 +2113,7 @@ class Detector(Process):
                     'fields': []
                 }
                 tag_fields = []
-                
+
                 try:
                     if 'signature_fields' in field_settings and len(field_settings['signature_fields']) > 0:
                         signature_fields = field_settings['signature_fields']
@@ -2140,7 +2151,7 @@ class Detector(Process):
                         f"Failed to parse field settings for {detection.name}, using input defaults"
                     )
                     pass
-                
+
                 # If the detection calls for tag fields use them instead of the input tag fields
                 if len(tag_fields) > 0:
                     _input['config']['tag_fields'] = tag_fields
@@ -2179,7 +2190,7 @@ class Detector(Process):
 
                     rule_types = {
                         0: self.match_rule,
-                        #1: self.threshold_rule,
+                        # 1: self.threshold_rule,
                         1: ThresholdRule,
                         2: self.metric_rule,
                         3: self.mismatch_rule,
@@ -2190,14 +2201,15 @@ class Detector(Process):
 
                     detection.last_run = datetime.datetime.utcnow().isoformat()
 
-                    if detection.rule_type not in [0,1]:
+                    if detection.rule_type not in [0, 1]:
                         rule_types[detection.rule_type](
                             detection, credential, _input, signature_fields, field_mapping)
-                    
+
                     if detection.rule_type == 1:
-                        threshold_rule = rule_types[detection.rule_type](detection, _input, credential, self.agent, signature_fields, field_mapping)
+                        threshold_rule = rule_types[detection.rule_type](
+                            detection, _input, credential, self.agent, signature_fields, field_mapping)
                         threshold_rule.run()
-                        
+
                     if detection.rule_type == 0:
 
                         if 'config' in _input:
@@ -2226,12 +2238,12 @@ class Detector(Process):
 
                         res = elastic.conn.search(
                             index=_input['config']['index'], body=query, scroll='30s')
-                        
+
                         scroll_id = None
-                        
+
                         if '_scroll_id' in res:
                             scroll_id = res['_scroll_id']
-                            
+
                         if 'total' in res['hits']:
                             self.logger.info(
                                 f"{detection.name} ({detection.uuid}) - Found {len(res['hits']['hits'])} detection hits.")
@@ -2404,8 +2416,8 @@ class Detector(Process):
             with ThreadPoolExecutor(max_workers=2) as executor:
                 executor.map(run_func, [self.run_rules, self.assess_rules])
 
-            #self.run_rules()
-            #self.assess_rules()
+            # self.run_rules()
+            # self.assess_rules()
 
             self.update_input_mappings()
             self.logger.info('Run complete, waiting')
